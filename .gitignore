@@ -1,59 +1,6 @@
-# Build outputs
 bin/
 obj/
-artifacts/
-publish/
-*.dll
-*.exe
-*.pdb
-*.deps.json
-*.runtimeconfig.json
-
-# Visual Studio / user state
 .vs/
-*.user
-*.suo
-*.rsuser
-*.userosscache
-*.sln.docstates
-*.vsidx
 
-# Local browser/session data
 ChromeUserData/
-**/ChromeUserData/
-
-# Secrets and certificates
-.env
-.env.*
-*.pfx
-*.p12
-*.pem
-*.key
-*.cer
-*.crt
-secrets.json
-appsettings.*.json
-
-# Generated audio / temporary media
-Resources/audio_temp.ogg
-Resources/ptt_*.ogg
-**/Resources/ptt_*.ogg
-*.ogg
-*.wav
-*.mp3
-
-# NuGet and local package cache
-packages/
-*.nupkg
-project.assets.json
-project.nuget.cache
-
-# Test and coverage output
-TestResults/
-coverage/
-*.coverage
-*.coveragexml
-
-# OS noise
-Thumbs.db
-Desktop.ini
+whatsapp-lines.json

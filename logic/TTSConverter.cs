@@ -4,18 +4,10 @@ namespace Automate_Whatsapp.Logic
 {
     public class ElevenLabsTts
     {
-        private readonly string apiKey;
-        private readonly string voiceId;
+        private readonly string apiKey = "sk_4ebd263194ba8907d1f8228c27e1b0edf953c5ca5ab281e3";
+        private readonly string voiceId = "IoWn77TsmQnza94sYlfg";
 
-        public ElevenLabsTts()
-        {
-            apiKey = Environment.GetEnvironmentVariable("ELEVENLABS_API_KEY")
-                ?? throw new InvalidOperationException("Define la variable de entorno ELEVENLABS_API_KEY.");
-            voiceId = Environment.GetEnvironmentVariable("ELEVENLABS_VOICE_ID")
-                ?? throw new InvalidOperationException("Define la variable de entorno ELEVENLABS_VOICE_ID.");
-        }
-
-        public async Task<string?> ConvertToOggAsync(string text, string outputPath)
+        public async Task<string> ConvertToOggAsync(string text, string outputPath)
         {
             using (var client = new HttpClient())
             {
@@ -48,8 +40,8 @@ namespace Automate_Whatsapp.Logic
 
                 byte[] audioBytes = await response.Content.ReadAsByteArrayAsync();
 
-                string? dir = Path.GetDirectoryName(outputPath);
-                if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir))
+                string dir = Path.GetDirectoryName(outputPath);
+                if (!Directory.Exists(dir))
                 {
                     Directory.CreateDirectory(dir);
                 }

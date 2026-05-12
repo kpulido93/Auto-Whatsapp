@@ -1,0 +1,18 @@
+[
+  {
+    "Id": "principal",
+    "DisplayName": "Principal",
+    "SessionPath": "ChromeUserData/principal",
+    "ProfileDirectory": "Default",
+    "Enabled": true,
+    "Priority": 1
+  },
+  {
+    "Id": "backup",
+    "DisplayName": "Backup",
+    "SessionPath": "ChromeUserData/backup",
+    "ProfileDirectory": "Default",
+    "Enabled": true,
+    "Priority": 2
+  }
+]
