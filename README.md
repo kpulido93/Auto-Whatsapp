@@ -27,16 +27,28 @@ dotnet run --project .\AutoWhatsApp.csproj
 
 La primera ejecucion abre WhatsApp Web. Escanea el QR con el telefono asociado antes de programar envios.
 
+## Plantilla Excel
+
+Desde la aplicacion, usa el boton **Descargar plantilla** en la seccion **1. Archivo Excel**. La app pedira donde guardar `plantilla_auto_whatsapp.xlsx` y generara el archivo localmente.
+
+La plantilla incluye:
+
+- Hoja `Mensajes`, vacia salvo los encabezados obligatorios.
+- Hoja `Instrucciones`, con ejemplos seguros y notas de llenado.
+- Validacion en `toAudio` para los valores `true`, `false`, `1` o `0`.
+
 ## Formato del Excel
 
 La primera fila se usa como encabezado. Desde la fila 2:
 
 | Columna | Campo | Descripcion |
 | --- | --- | --- |
-| A | Codigo de pais | Ejemplo: `57`. |
-| B | Telefono | Numero sin espacios. |
+| A | Código país | Ejemplo: `57`, sin `+`. |
+| B | Teléfono | Numero sin espacios. |
 | C | Mensaje | Texto a enviar o convertir a audio. |
 | D | toAudio | `true`, `false`, `1` o `0`. |
+
+Al cargar una plantilla vacia, la vista previa mostrara 0 filas y no se habilitara el envio. Completa los datos desde la fila 2 antes de programar o enviar.
 
 ## Documentacion
 

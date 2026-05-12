@@ -22,12 +22,35 @@ namespace Automate_Whatsapp
         private void InitializeComponent()
         {
             components = new System.ComponentModel.Container();
+            mainMenuStrip = new MenuStrip();
+            archivoToolStripMenuItem = new ToolStripMenuItem();
+            seleccionarExcelToolStripMenuItem = new ToolStripMenuItem();
+            descargarPlantillaExcelToolStripMenuItem = new ToolStripMenuItem();
+            archivoToolStripSeparator = new ToolStripSeparator();
+            salirToolStripMenuItem = new ToolStripMenuItem();
+            configuracionToolStripMenuItem = new ToolStripMenuItem();
+            lineaWhatsAppToolStripMenuItem = new ToolStripMenuItem();
+            cambiarAutomaticamenteSiFallaToolStripMenuItem = new ToolStripMenuItem();
+            seleccionarLineasToolStripMenuItem = new ToolStripMenuItem();
+            configuracionToolStripSeparator = new ToolStripSeparator();
+            mostrarVistaPreviaExcelToolStripMenuItem = new ToolStripMenuItem();
+            ayudaToolStripMenuItem = new ToolStripMenuItem();
+            acercaDeAutoWhatsAppToolStripMenuItem = new ToolStripMenuItem();
             mainScrollPanel = new Panel();
             mainLayout = new TableLayoutPanel();
+            grpConfiguration = new GroupBox();
+            configurationLayout = new TableLayoutPanel();
+            configurationHeaderLayout = new TableLayoutPanel();
+            btnToggleConfiguration = new Button();
+            lblConfigurationSummary = new Label();
+            configurationContentLayout = new TableLayoutPanel();
             grpExcelFile = new GroupBox();
             fileLayout = new TableLayoutPanel();
             btnSelectFile = new Button();
+            btnDownloadTemplate = new Button();
+            chkShowExcelPreview = new CheckBox();
             lblFilePath = new Label();
+            lblExcelCompactSummary = new Label();
             uiToolTip = new ToolTip(components);
             grpExcelPreview = new GroupBox();
             previewLayout = new TableLayoutPanel();
@@ -78,8 +101,13 @@ namespace Automate_Whatsapp
             txtLog = new TextBox();
             openFileDialog1 = new OpenFileDialog();
             schedulerTimer = new System.Windows.Forms.Timer(components);
+            mainMenuStrip.SuspendLayout();
             mainScrollPanel.SuspendLayout();
             mainLayout.SuspendLayout();
+            grpConfiguration.SuspendLayout();
+            configurationLayout.SuspendLayout();
+            configurationHeaderLayout.SuspendLayout();
+            configurationContentLayout.SuspendLayout();
             grpExcelFile.SuspendLayout();
             fileLayout.SuspendLayout();
             grpExcelPreview.SuspendLayout();
@@ -99,15 +127,114 @@ namespace Automate_Whatsapp
             logLayout.SuspendLayout();
             SuspendLayout();
             //
+            // mainMenuStrip
+            //
+            mainMenuStrip.Items.AddRange(new ToolStripItem[] { archivoToolStripMenuItem, configuracionToolStripMenuItem, ayudaToolStripMenuItem });
+            mainMenuStrip.Location = new Point(0, 0);
+            mainMenuStrip.Name = "mainMenuStrip";
+            mainMenuStrip.Size = new Size(920, 24);
+            mainMenuStrip.TabIndex = 0;
+            mainMenuStrip.Text = "mainMenuStrip";
+            //
+            // archivoToolStripMenuItem
+            //
+            archivoToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { seleccionarExcelToolStripMenuItem, descargarPlantillaExcelToolStripMenuItem, archivoToolStripSeparator, salirToolStripMenuItem });
+            archivoToolStripMenuItem.Name = "archivoToolStripMenuItem";
+            archivoToolStripMenuItem.Size = new Size(60, 20);
+            archivoToolStripMenuItem.Text = "&Archivo";
+            //
+            // seleccionarExcelToolStripMenuItem
+            //
+            seleccionarExcelToolStripMenuItem.Name = "seleccionarExcelToolStripMenuItem";
+            seleccionarExcelToolStripMenuItem.Size = new Size(216, 22);
+            seleccionarExcelToolStripMenuItem.Text = "Seleccionar Excel...";
+            seleccionarExcelToolStripMenuItem.Click += seleccionarExcelToolStripMenuItem_Click;
+            //
+            // descargarPlantillaExcelToolStripMenuItem
+            //
+            descargarPlantillaExcelToolStripMenuItem.Name = "descargarPlantillaExcelToolStripMenuItem";
+            descargarPlantillaExcelToolStripMenuItem.Size = new Size(216, 22);
+            descargarPlantillaExcelToolStripMenuItem.Text = "Descargar plantilla Excel...";
+            descargarPlantillaExcelToolStripMenuItem.Click += descargarPlantillaExcelToolStripMenuItem_Click;
+            //
+            // archivoToolStripSeparator
+            //
+            archivoToolStripSeparator.Name = "archivoToolStripSeparator";
+            archivoToolStripSeparator.Size = new Size(213, 6);
+            //
+            // salirToolStripMenuItem
+            //
+            salirToolStripMenuItem.Name = "salirToolStripMenuItem";
+            salirToolStripMenuItem.Size = new Size(216, 22);
+            salirToolStripMenuItem.Text = "Salir";
+            salirToolStripMenuItem.Click += salirToolStripMenuItem_Click;
+            //
+            // configuracionToolStripMenuItem
+            //
+            configuracionToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { lineaWhatsAppToolStripMenuItem, cambiarAutomaticamenteSiFallaToolStripMenuItem, seleccionarLineasToolStripMenuItem, configuracionToolStripSeparator, mostrarVistaPreviaExcelToolStripMenuItem });
+            configuracionToolStripMenuItem.Name = "configuracionToolStripMenuItem";
+            configuracionToolStripMenuItem.Size = new Size(95, 20);
+            configuracionToolStripMenuItem.Text = "&Configuración";
+            configuracionToolStripMenuItem.DropDownOpening += configuracionToolStripMenuItem_DropDownOpening;
+            //
+            // lineaWhatsAppToolStripMenuItem
+            //
+            lineaWhatsAppToolStripMenuItem.Name = "lineaWhatsAppToolStripMenuItem";
+            lineaWhatsAppToolStripMenuItem.Size = new Size(226, 22);
+            lineaWhatsAppToolStripMenuItem.Text = "Línea WhatsApp";
+            lineaWhatsAppToolStripMenuItem.DropDownOpening += lineaWhatsAppToolStripMenuItem_DropDownOpening;
+            //
+            // cambiarAutomaticamenteSiFallaToolStripMenuItem
+            //
+            cambiarAutomaticamenteSiFallaToolStripMenuItem.CheckOnClick = true;
+            cambiarAutomaticamenteSiFallaToolStripMenuItem.Name = "cambiarAutomaticamenteSiFallaToolStripMenuItem";
+            cambiarAutomaticamenteSiFallaToolStripMenuItem.Size = new Size(226, 22);
+            cambiarAutomaticamenteSiFallaToolStripMenuItem.Text = "Cambiar automáticamente si falla";
+            cambiarAutomaticamenteSiFallaToolStripMenuItem.Click += cambiarAutomaticamenteSiFallaToolStripMenuItem_Click;
+            //
+            // seleccionarLineasToolStripMenuItem
+            //
+            seleccionarLineasToolStripMenuItem.Name = "seleccionarLineasToolStripMenuItem";
+            seleccionarLineasToolStripMenuItem.Size = new Size(226, 22);
+            seleccionarLineasToolStripMenuItem.Text = "Seleccionar líneas...";
+            seleccionarLineasToolStripMenuItem.Click += seleccionarLineasToolStripMenuItem_Click;
+            //
+            // configuracionToolStripSeparator
+            //
+            configuracionToolStripSeparator.Name = "configuracionToolStripSeparator";
+            configuracionToolStripSeparator.Size = new Size(223, 6);
+            //
+            // mostrarVistaPreviaExcelToolStripMenuItem
+            //
+            mostrarVistaPreviaExcelToolStripMenuItem.CheckOnClick = true;
+            mostrarVistaPreviaExcelToolStripMenuItem.Name = "mostrarVistaPreviaExcelToolStripMenuItem";
+            mostrarVistaPreviaExcelToolStripMenuItem.Size = new Size(226, 22);
+            mostrarVistaPreviaExcelToolStripMenuItem.Text = "Mostrar vista previa del Excel";
+            mostrarVistaPreviaExcelToolStripMenuItem.Click += mostrarVistaPreviaExcelToolStripMenuItem_Click;
+            //
+            // ayudaToolStripMenuItem
+            //
+            ayudaToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { acercaDeAutoWhatsAppToolStripMenuItem });
+            ayudaToolStripMenuItem.Name = "ayudaToolStripMenuItem";
+            ayudaToolStripMenuItem.Size = new Size(53, 20);
+            ayudaToolStripMenuItem.Text = "Ay&uda";
+            //
+            // acercaDeAutoWhatsAppToolStripMenuItem
+            //
+            acercaDeAutoWhatsAppToolStripMenuItem.Name = "acercaDeAutoWhatsAppToolStripMenuItem";
+            acercaDeAutoWhatsAppToolStripMenuItem.Size = new Size(211, 22);
+            acercaDeAutoWhatsAppToolStripMenuItem.Text = "Acerca de AutoWhatsApp";
+            acercaDeAutoWhatsAppToolStripMenuItem.Click += acercaDeAutoWhatsAppToolStripMenuItem_Click;
+            //
             // mainScrollPanel
             //
             mainScrollPanel.AutoScroll = true;
             mainScrollPanel.Controls.Add(mainLayout);
             mainScrollPanel.Dock = DockStyle.Fill;
-            mainScrollPanel.Location = new Point(0, 0);
+            mainScrollPanel.Location = new Point(0, 24);
             mainScrollPanel.Name = "mainScrollPanel";
-            mainScrollPanel.Size = new Size(920, 880);
-            mainScrollPanel.TabIndex = 0;
+            mainScrollPanel.Size = new Size(920, 736);
+            mainScrollPanel.TabIndex = 1;
             mainScrollPanel.Resize += mainScrollPanel_Resize;
             //
             // mainLayout
@@ -115,48 +242,148 @@ namespace Automate_Whatsapp
             mainLayout.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             mainLayout.ColumnCount = 1;
             mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            mainLayout.Controls.Add(grpExcelFile, 0, 0);
-            mainLayout.Controls.Add(grpExcelPreview, 0, 1);
-            mainLayout.Controls.Add(grpSchedule, 0, 2);
-            mainLayout.Controls.Add(grpSendStatus, 0, 3);
-            mainLayout.Controls.Add(grpActivity, 0, 4);
-            mainLayout.Location = new Point(16, 16);
+            mainLayout.Controls.Add(grpConfiguration, 0, 0);
+            mainLayout.Controls.Add(grpExcelFile, 0, 1);
+            mainLayout.Controls.Add(grpExcelPreview, 0, 2);
+            mainLayout.Controls.Add(grpSchedule, 0, 3);
+            mainLayout.Controls.Add(grpSendStatus, 0, 4);
+            mainLayout.Controls.Add(grpActivity, 0, 5);
+            mainLayout.Location = new Point(8, 8);
             mainLayout.Name = "mainLayout";
-            mainLayout.RowCount = 5;
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 96F));
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 210F));
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 286F));
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 152F));
+            mainLayout.RowCount = 6;
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112F));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 104F));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 156F));
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            mainLayout.Size = new Size(869, 902);
+            mainLayout.Size = new Size(895, 720);
             mainLayout.TabIndex = 0;
+            //
+            // grpConfiguration
+            //
+            grpConfiguration.Controls.Add(configurationLayout);
+            grpConfiguration.Dock = DockStyle.Fill;
+            grpConfiguration.Location = new Point(0, 0);
+            grpConfiguration.Margin = new Padding(0, 0, 0, 6);
+            grpConfiguration.Name = "grpConfiguration";
+            grpConfiguration.Padding = new Padding(12, 10, 12, 12);
+            grpConfiguration.Size = new Size(895, 0);
+            grpConfiguration.TabIndex = 0;
+            grpConfiguration.TabStop = false;
+            grpConfiguration.Text = "Configuración";
+            grpConfiguration.Visible = false;
+            //
+            // configurationLayout
+            //
+            configurationLayout.ColumnCount = 1;
+            configurationLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            configurationLayout.Controls.Add(configurationHeaderLayout, 0, 0);
+            configurationLayout.Controls.Add(configurationContentLayout, 0, 1);
+            configurationLayout.Dock = DockStyle.Fill;
+            configurationLayout.Location = new Point(12, 26);
+            configurationLayout.Name = "configurationLayout";
+            configurationLayout.RowCount = 2;
+            configurationLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
+            configurationLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            configurationLayout.Size = new Size(871, 36);
+            configurationLayout.TabIndex = 0;
+            //
+            // configurationHeaderLayout
+            //
+            configurationHeaderLayout.ColumnCount = 2;
+            configurationHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104F));
+            configurationHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            configurationHeaderLayout.Controls.Add(btnToggleConfiguration, 0, 0);
+            configurationHeaderLayout.Controls.Add(lblConfigurationSummary, 1, 0);
+            configurationHeaderLayout.Dock = DockStyle.Fill;
+            configurationHeaderLayout.Location = new Point(0, 0);
+            configurationHeaderLayout.Margin = new Padding(0);
+            configurationHeaderLayout.Name = "configurationHeaderLayout";
+            configurationHeaderLayout.RowCount = 1;
+            configurationHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            configurationHeaderLayout.Size = new Size(871, 32);
+            configurationHeaderLayout.TabIndex = 0;
+            //
+            // btnToggleConfiguration
+            //
+            btnToggleConfiguration.Dock = DockStyle.Fill;
+            btnToggleConfiguration.Location = new Point(0, 0);
+            btnToggleConfiguration.Margin = new Padding(0, 0, 8, 0);
+            btnToggleConfiguration.Name = "btnToggleConfiguration";
+            btnToggleConfiguration.Size = new Size(96, 32);
+            btnToggleConfiguration.TabIndex = 0;
+            btnToggleConfiguration.Text = "Mostrar";
+            btnToggleConfiguration.UseVisualStyleBackColor = true;
+            btnToggleConfiguration.Click += btnToggleConfiguration_Click;
+            //
+            // lblConfigurationSummary
+            //
+            lblConfigurationSummary.AutoEllipsis = true;
+            lblConfigurationSummary.Dock = DockStyle.Fill;
+            lblConfigurationSummary.ForeColor = Color.FromArgb(75, 85, 99);
+            lblConfigurationSummary.Location = new Point(107, 0);
+            lblConfigurationSummary.Name = "lblConfigurationSummary";
+            lblConfigurationSummary.Size = new Size(761, 32);
+            lblConfigurationSummary.TabIndex = 1;
+            lblConfigurationSummary.Text = "Configuración: sin línea · Auto-fallback: No · Seleccionadas: ninguna";
+            lblConfigurationSummary.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // configurationContentLayout
+            //
+            configurationContentLayout.ColumnCount = 2;
+            configurationContentLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130F));
+            configurationContentLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            configurationContentLayout.Controls.Add(lblWhatsAppLine, 0, 0);
+            configurationContentLayout.Controls.Add(lineOptionsLayout, 1, 0);
+            configurationContentLayout.Controls.Add(lblRunLines, 0, 1);
+            configurationContentLayout.Controls.Add(runLinesLayout, 1, 1);
+            configurationContentLayout.Controls.Add(lblLinePreparation, 0, 2);
+            configurationContentLayout.Controls.Add(linePreparationLayout, 1, 2);
+            configurationContentLayout.Dock = DockStyle.Fill;
+            configurationContentLayout.Location = new Point(0, 32);
+            configurationContentLayout.Margin = new Padding(0);
+            configurationContentLayout.Name = "configurationContentLayout";
+            configurationContentLayout.RowCount = 3;
+            configurationContentLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+            configurationContentLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+            configurationContentLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            configurationContentLayout.Size = new Size(871, 0);
+            configurationContentLayout.TabIndex = 1;
+            configurationContentLayout.Visible = false;
             //
             // grpExcelFile
             //
             grpExcelFile.Controls.Add(fileLayout);
             grpExcelFile.Dock = DockStyle.Fill;
             grpExcelFile.Location = new Point(0, 0);
-            grpExcelFile.Margin = new Padding(0, 0, 0, 12);
+            grpExcelFile.Margin = new Padding(0, 0, 0, 6);
             grpExcelFile.Name = "grpExcelFile";
             grpExcelFile.Padding = new Padding(12, 10, 12, 12);
-            grpExcelFile.Size = new Size(869, 84);
-            grpExcelFile.TabIndex = 0;
+            grpExcelFile.Size = new Size(895, 106);
+            grpExcelFile.TabIndex = 1;
             grpExcelFile.TabStop = false;
             grpExcelFile.Text = "1. Archivo Excel";
             //
             // fileLayout
             //
-            fileLayout.ColumnCount = 2;
-            fileLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 230F));
+            fileLayout.ColumnCount = 4;
+            fileLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 206F));
+            fileLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 154F));
+            fileLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210F));
             fileLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             fileLayout.Controls.Add(btnSelectFile, 0, 0);
-            fileLayout.Controls.Add(lblFilePath, 1, 0);
+            fileLayout.Controls.Add(btnDownloadTemplate, 1, 0);
+            fileLayout.Controls.Add(chkShowExcelPreview, 2, 0);
+            fileLayout.Controls.Add(lblFilePath, 3, 0);
+            fileLayout.Controls.Add(lblExcelCompactSummary, 0, 1);
             fileLayout.Dock = DockStyle.Fill;
             fileLayout.Location = new Point(12, 26);
             fileLayout.Name = "fileLayout";
-            fileLayout.RowCount = 1;
+            fileLayout.RowCount = 2;
+            fileLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
             fileLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            fileLayout.Size = new Size(845, 46);
+            fileLayout.Size = new Size(871, 68);
             fileLayout.TabIndex = 0;
             //
             // btnSelectFile
@@ -164,37 +391,74 @@ namespace Automate_Whatsapp
             btnSelectFile.Anchor = AnchorStyles.Left;
             btnSelectFile.Location = new Point(3, 5);
             btnSelectFile.Name = "btnSelectFile";
-            btnSelectFile.Size = new Size(210, 36);
+            btnSelectFile.Size = new Size(194, 34);
             btnSelectFile.TabIndex = 0;
             btnSelectFile.Text = "Seleccionar archivo Excel";
             btnSelectFile.UseVisualStyleBackColor = true;
             btnSelectFile.Click += btnSelectFile_Click;
             //
+            // btnDownloadTemplate
+            //
+            btnDownloadTemplate.Anchor = AnchorStyles.Left;
+            btnDownloadTemplate.Location = new Point(209, 5);
+            btnDownloadTemplate.Name = "btnDownloadTemplate";
+            btnDownloadTemplate.Size = new Size(142, 34);
+            btnDownloadTemplate.TabIndex = 1;
+            btnDownloadTemplate.Text = "Descargar plantilla";
+            btnDownloadTemplate.UseVisualStyleBackColor = true;
+            btnDownloadTemplate.Click += btnDownloadTemplate_Click;
+            //
+            // chkShowExcelPreview
+            //
+            chkShowExcelPreview.Anchor = AnchorStyles.Left;
+            chkShowExcelPreview.AutoSize = true;
+            chkShowExcelPreview.Location = new Point(363, 11);
+            chkShowExcelPreview.Name = "chkShowExcelPreview";
+            chkShowExcelPreview.Size = new Size(186, 19);
+            chkShowExcelPreview.TabIndex = 2;
+            chkShowExcelPreview.Text = "Mostrar vista previa del Excel";
+            chkShowExcelPreview.UseVisualStyleBackColor = true;
+            chkShowExcelPreview.CheckedChanged += chkShowExcelPreview_CheckedChanged;
+            //
             // lblFilePath
             //
             lblFilePath.AutoEllipsis = true;
             lblFilePath.Dock = DockStyle.Fill;
-            lblFilePath.Location = new Point(233, 0);
+            lblFilePath.Location = new Point(573, 0);
             lblFilePath.Name = "lblFilePath";
             lblFilePath.Padding = new Padding(8, 0, 0, 0);
-            lblFilePath.Size = new Size(628, 46);
-            lblFilePath.TabIndex = 1;
+            lblFilePath.Size = new Size(295, 42);
+            lblFilePath.TabIndex = 3;
             lblFilePath.Text = "Archivo seleccionado: ninguno";
             lblFilePath.TextAlign = ContentAlignment.MiddleLeft;
             uiToolTip.SetToolTip(lblFilePath, "Archivo seleccionado: ninguno");
+            //
+            // lblExcelCompactSummary
+            //
+            lblExcelCompactSummary.AutoEllipsis = true;
+            fileLayout.SetColumnSpan(lblExcelCompactSummary, 4);
+            lblExcelCompactSummary.Dock = DockStyle.Fill;
+            lblExcelCompactSummary.ForeColor = Color.FromArgb(75, 85, 99);
+            lblExcelCompactSummary.Location = new Point(3, 42);
+            lblExcelCompactSummary.Name = "lblExcelCompactSummary";
+            lblExcelCompactSummary.Size = new Size(865, 26);
+            lblExcelCompactSummary.TabIndex = 4;
+            lblExcelCompactSummary.Text = "Resumen: sin Excel seleccionado.";
+            lblExcelCompactSummary.TextAlign = ContentAlignment.MiddleLeft;
             //
             // grpExcelPreview
             //
             grpExcelPreview.Controls.Add(previewLayout);
             grpExcelPreview.Dock = DockStyle.Fill;
-            grpExcelPreview.Location = new Point(0, 96);
-            grpExcelPreview.Margin = new Padding(0, 0, 0, 12);
+            grpExcelPreview.Location = new Point(0, 112);
+            grpExcelPreview.Margin = new Padding(0, 0, 0, 6);
             grpExcelPreview.Name = "grpExcelPreview";
             grpExcelPreview.Padding = new Padding(12, 10, 12, 12);
-            grpExcelPreview.Size = new Size(869, 224);
+            grpExcelPreview.Size = new Size(895, 0);
             grpExcelPreview.TabIndex = 1;
             grpExcelPreview.TabStop = false;
             grpExcelPreview.Text = "2. Vista previa del Excel";
+            grpExcelPreview.Visible = false;
             //
             // previewLayout
             //
@@ -243,6 +507,7 @@ namespace Automate_Whatsapp
             dgvExcelPreview.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvExcelPreview.Size = new Size(858, 120);
             dgvExcelPreview.TabIndex = 1;
+            dgvExcelPreview.Visible = false;
             dgvExcelPreview.DataBindingComplete += dgvExcelPreview_DataBindingComplete;
             //
             // colCountryCode
@@ -306,39 +571,30 @@ namespace Automate_Whatsapp
             //
             grpSchedule.Controls.Add(scheduleLayout);
             grpSchedule.Dock = DockStyle.Fill;
-            grpSchedule.Location = new Point(0, 306);
-            grpSchedule.Margin = new Padding(0, 0, 0, 12);
+            grpSchedule.Location = new Point(0, 112);
+            grpSchedule.Margin = new Padding(0, 0, 0, 6);
             grpSchedule.Name = "grpSchedule";
             grpSchedule.Padding = new Padding(12, 10, 12, 12);
-            grpSchedule.Size = new Size(869, 274);
-            grpSchedule.TabIndex = 2;
+            grpSchedule.Size = new Size(895, 98);
+            grpSchedule.TabIndex = 3;
             grpSchedule.TabStop = false;
             grpSchedule.Text = "3. Programación";
             //
             // scheduleLayout
             //
-            scheduleLayout.ColumnCount = 2;
+            scheduleLayout.ColumnCount = 3;
             scheduleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130F));
             scheduleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            scheduleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 306F));
             scheduleLayout.Controls.Add(lblScheduleTime, 0, 0);
             scheduleLayout.Controls.Add(schedulePickerLayout, 1, 0);
-            scheduleLayout.Controls.Add(lblWhatsAppLine, 0, 1);
-            scheduleLayout.Controls.Add(lineOptionsLayout, 1, 1);
-            scheduleLayout.Controls.Add(lblRunLines, 0, 2);
-            scheduleLayout.Controls.Add(runLinesLayout, 1, 2);
-            scheduleLayout.Controls.Add(lblLinePreparation, 0, 3);
-            scheduleLayout.Controls.Add(linePreparationLayout, 1, 3);
-            scheduleLayout.Controls.Add(scheduleActionsLayout, 1, 4);
+            scheduleLayout.Controls.Add(scheduleActionsLayout, 2, 0);
             scheduleLayout.Dock = DockStyle.Fill;
             scheduleLayout.Location = new Point(12, 26);
             scheduleLayout.Name = "scheduleLayout";
-            scheduleLayout.RowCount = 5;
-            scheduleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 74F));
-            scheduleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
-            scheduleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
-            scheduleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+            scheduleLayout.RowCount = 1;
             scheduleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            scheduleLayout.Size = new Size(864, 236);
+            scheduleLayout.Size = new Size(871, 60);
             scheduleLayout.TabIndex = 0;
             //
             // lblScheduleTime
@@ -346,7 +602,7 @@ namespace Automate_Whatsapp
             lblScheduleTime.Dock = DockStyle.Fill;
             lblScheduleTime.Location = new Point(3, 0);
             lblScheduleTime.Name = "lblScheduleTime";
-            lblScheduleTime.Size = new Size(124, 74);
+            lblScheduleTime.Size = new Size(124, 60);
             lblScheduleTime.TabIndex = 0;
             lblScheduleTime.Text = "Fecha y hora:";
             lblScheduleTime.TextAlign = ContentAlignment.MiddleLeft;
@@ -366,7 +622,7 @@ namespace Automate_Whatsapp
             schedulePickerLayout.RowCount = 2;
             schedulePickerLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
             schedulePickerLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            schedulePickerLayout.Size = new Size(734, 74);
+            schedulePickerLayout.Size = new Size(435, 60);
             schedulePickerLayout.TabIndex = 1;
             //
             // lblSelectedScheduleTime
@@ -379,7 +635,7 @@ namespace Automate_Whatsapp
             lblSelectedScheduleTime.Margin = new Padding(3, 3, 8, 3);
             lblSelectedScheduleTime.Name = "lblSelectedScheduleTime";
             lblSelectedScheduleTime.Padding = new Padding(8, 0, 8, 0);
-            lblSelectedScheduleTime.Size = new Size(611, 30);
+            lblSelectedScheduleTime.Size = new Size(312, 30);
             lblSelectedScheduleTime.TabIndex = 0;
             lblSelectedScheduleTime.Text = "dd/MM/yyyy HH:mm";
             lblSelectedScheduleTime.TextAlign = ContentAlignment.MiddleLeft;
@@ -404,7 +660,7 @@ namespace Automate_Whatsapp
             lblScheduleSummary.ForeColor = Color.FromArgb(37, 99, 235);
             lblScheduleSummary.Location = new Point(3, 36);
             lblScheduleSummary.Name = "lblScheduleSummary";
-            lblScheduleSummary.Size = new Size(728, 38);
+            lblScheduleSummary.Size = new Size(429, 24);
             lblScheduleSummary.TabIndex = 2;
             lblScheduleSummary.Text = "Programado para:";
             lblScheduleSummary.TextAlign = ContentAlignment.MiddleLeft;
@@ -412,7 +668,7 @@ namespace Automate_Whatsapp
             // lblWhatsAppLine
             //
             lblWhatsAppLine.Dock = DockStyle.Fill;
-            lblWhatsAppLine.Location = new Point(3, 74);
+            lblWhatsAppLine.Location = new Point(3, 0);
             lblWhatsAppLine.Name = "lblWhatsAppLine";
             lblWhatsAppLine.Size = new Size(124, 34);
             lblWhatsAppLine.TabIndex = 2;
@@ -424,10 +680,10 @@ namespace Automate_Whatsapp
             lineOptionsLayout.Controls.Add(cmbWhatsAppLine);
             lineOptionsLayout.Controls.Add(chkAutoLineFallback);
             lineOptionsLayout.Dock = DockStyle.Fill;
-            lineOptionsLayout.Location = new Point(130, 74);
+            lineOptionsLayout.Location = new Point(130, 0);
             lineOptionsLayout.Margin = new Padding(0);
             lineOptionsLayout.Name = "lineOptionsLayout";
-            lineOptionsLayout.Size = new Size(734, 34);
+            lineOptionsLayout.Size = new Size(715, 34);
             lineOptionsLayout.TabIndex = 3;
             lineOptionsLayout.WrapContents = false;
             //
@@ -454,11 +710,12 @@ namespace Automate_Whatsapp
             chkAutoLineFallback.TabIndex = 1;
             chkAutoLineFallback.Text = "Cambiar automáticamente si falla";
             chkAutoLineFallback.UseVisualStyleBackColor = true;
+            chkAutoLineFallback.CheckedChanged += chkAutoLineFallback_CheckedChanged;
             //
             // lblRunLines
             //
             lblRunLines.Dock = DockStyle.Fill;
-            lblRunLines.Location = new Point(3, 108);
+            lblRunLines.Location = new Point(3, 34);
             lblRunLines.Name = "lblRunLines";
             lblRunLines.Size = new Size(124, 40);
             lblRunLines.TabIndex = 4;
@@ -470,7 +727,7 @@ namespace Automate_Whatsapp
             runLinesLayout.Controls.Add(btnSelectRunLines);
             runLinesLayout.Controls.Add(lblRunLinesSummary);
             runLinesLayout.Dock = DockStyle.Fill;
-            runLinesLayout.Location = new Point(130, 108);
+            runLinesLayout.Location = new Point(130, 34);
             runLinesLayout.Margin = new Padding(0);
             runLinesLayout.Name = "runLinesLayout";
             runLinesLayout.Size = new Size(715, 40);
@@ -482,7 +739,7 @@ namespace Automate_Whatsapp
             btnSelectRunLines.Location = new Point(3, 5);
             btnSelectRunLines.Margin = new Padding(3, 5, 10, 3);
             btnSelectRunLines.Name = "btnSelectRunLines";
-            btnSelectRunLines.Size = new Size(170, 30);
+            btnSelectRunLines.Size = new Size(150, 30);
             btnSelectRunLines.TabIndex = 0;
             btnSelectRunLines.Text = "Seleccionar líneas";
             btnSelectRunLines.UseVisualStyleBackColor = true;
@@ -492,9 +749,9 @@ namespace Automate_Whatsapp
             //
             lblRunLinesSummary.AutoEllipsis = true;
             lblRunLinesSummary.ForeColor = Color.FromArgb(75, 85, 99);
-            lblRunLinesSummary.Location = new Point(186, 0);
+            lblRunLinesSummary.Location = new Point(166, 0);
             lblRunLinesSummary.Name = "lblRunLinesSummary";
-            lblRunLinesSummary.Size = new Size(420, 40);
+            lblRunLinesSummary.Size = new Size(360, 40);
             lblRunLinesSummary.TabIndex = 1;
             lblRunLinesSummary.Text = "Líneas seleccionadas: Principal";
             lblRunLinesSummary.TextAlign = ContentAlignment.MiddleLeft;
@@ -502,7 +759,7 @@ namespace Automate_Whatsapp
             // lblLinePreparation
             //
             lblLinePreparation.Dock = DockStyle.Fill;
-            lblLinePreparation.Location = new Point(3, 148);
+            lblLinePreparation.Location = new Point(3, 74);
             lblLinePreparation.Name = "lblLinePreparation";
             lblLinePreparation.Size = new Size(124, 42);
             lblLinePreparation.TabIndex = 6;
@@ -511,11 +768,12 @@ namespace Automate_Whatsapp
             //
             // linePreparationLayout
             //
+            linePreparationLayout.Controls.Add(btnConfigureLines);
             linePreparationLayout.Controls.Add(btnPrepareLine);
             linePreparationLayout.Controls.Add(btnPrepareAllLines);
             linePreparationLayout.Controls.Add(lblLinePreparationStatus);
             linePreparationLayout.Dock = DockStyle.Fill;
-            linePreparationLayout.Location = new Point(130, 148);
+            linePreparationLayout.Location = new Point(130, 74);
             linePreparationLayout.Margin = new Padding(0);
             linePreparationLayout.Name = "linePreparationLayout";
             linePreparationLayout.Size = new Size(715, 42);
@@ -524,10 +782,10 @@ namespace Automate_Whatsapp
             //
             // btnPrepareLine
             //
-            btnPrepareLine.Location = new Point(3, 5);
+            btnPrepareLine.Location = new Point(135, 5);
             btnPrepareLine.Margin = new Padding(3, 5, 6, 3);
             btnPrepareLine.Name = "btnPrepareLine";
-            btnPrepareLine.Size = new Size(120, 30);
+            btnPrepareLine.Size = new Size(108, 30);
             btnPrepareLine.TabIndex = 0;
             btnPrepareLine.Text = "Preparar línea";
             btnPrepareLine.UseVisualStyleBackColor = true;
@@ -535,10 +793,10 @@ namespace Automate_Whatsapp
             //
             // btnPrepareAllLines
             //
-            btnPrepareAllLines.Location = new Point(132, 5);
+            btnPrepareAllLines.Location = new Point(252, 5);
             btnPrepareAllLines.Margin = new Padding(3, 5, 12, 3);
             btnPrepareAllLines.Name = "btnPrepareAllLines";
-            btnPrepareAllLines.Size = new Size(120, 30);
+            btnPrepareAllLines.Size = new Size(108, 30);
             btnPrepareAllLines.TabIndex = 1;
             btnPrepareAllLines.Text = "Preparar todas";
             btnPrepareAllLines.UseVisualStyleBackColor = true;
@@ -548,9 +806,9 @@ namespace Automate_Whatsapp
             //
             lblLinePreparationStatus.AutoEllipsis = true;
             lblLinePreparationStatus.ForeColor = Color.FromArgb(75, 85, 99);
-            lblLinePreparationStatus.Location = new Point(267, 0);
+            lblLinePreparationStatus.Location = new Point(375, 0);
             lblLinePreparationStatus.Name = "lblLinePreparationStatus";
-            lblLinePreparationStatus.Size = new Size(280, 40);
+            lblLinePreparationStatus.Size = new Size(220, 40);
             lblLinePreparationStatus.TabIndex = 2;
             lblLinePreparationStatus.Text = "Estado línea: Sin verificar";
             lblLinePreparationStatus.TextAlign = ContentAlignment.MiddleLeft;
@@ -559,13 +817,12 @@ namespace Automate_Whatsapp
             //
             scheduleActionsLayout.Controls.Add(btnSend);
             scheduleActionsLayout.Controls.Add(btnSendNow);
-            scheduleActionsLayout.Controls.Add(btnConfigureLines);
             scheduleActionsLayout.Dock = DockStyle.Fill;
             scheduleActionsLayout.FlowDirection = FlowDirection.RightToLeft;
-            scheduleActionsLayout.Location = new Point(130, 190);
+            scheduleActionsLayout.Location = new Point(565, 0);
             scheduleActionsLayout.Margin = new Padding(0);
             scheduleActionsLayout.Name = "scheduleActionsLayout";
-            scheduleActionsLayout.Size = new Size(715, 46);
+            scheduleActionsLayout.Size = new Size(306, 60);
             scheduleActionsLayout.TabIndex = 8;
             scheduleActionsLayout.WrapContents = false;
             //
@@ -603,10 +860,10 @@ namespace Automate_Whatsapp
             //
             // btnConfigureLines
             //
-            btnConfigureLines.Location = new Point(275, 2);
-            btnConfigureLines.Margin = new Padding(3, 2, 6, 0);
+            btnConfigureLines.Location = new Point(3, 5);
+            btnConfigureLines.Margin = new Padding(3, 5, 6, 3);
             btnConfigureLines.Name = "btnConfigureLines";
-            btnConfigureLines.Size = new Size(138, 32);
+            btnConfigureLines.Size = new Size(126, 32);
             btnConfigureLines.TabIndex = 2;
             btnConfigureLines.Text = "Configurar líneas";
             btnConfigureLines.UseVisualStyleBackColor = true;
@@ -616,11 +873,11 @@ namespace Automate_Whatsapp
             //
             grpSendStatus.Controls.Add(statusLayout);
             grpSendStatus.Dock = DockStyle.Fill;
-            grpSendStatus.Location = new Point(0, 592);
-            grpSendStatus.Margin = new Padding(0, 0, 0, 12);
+            grpSendStatus.Location = new Point(0, 216);
+            grpSendStatus.Margin = new Padding(0, 0, 0, 6);
             grpSendStatus.Name = "grpSendStatus";
             grpSendStatus.Padding = new Padding(12, 10, 12, 12);
-            grpSendStatus.Size = new Size(869, 140);
+            grpSendStatus.Size = new Size(895, 150);
             grpSendStatus.TabIndex = 3;
             grpSendStatus.TabStop = false;
             grpSendStatus.Text = "4. Estado del envío";
@@ -632,20 +889,20 @@ namespace Automate_Whatsapp
             statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 232F));
             statusLayout.Controls.Add(lblGeneralStatus, 0, 0);
             statusLayout.Controls.Add(lblProgress, 0, 1);
-            statusLayout.Controls.Add(lblProgressText, 0, 2);
-            statusLayout.Controls.Add(lblSendCounters, 0, 3);
-            statusLayout.Controls.Add(progressBar1, 0, 4);
+            statusLayout.Controls.Add(progressBar1, 0, 2);
+            statusLayout.Controls.Add(lblProgressText, 0, 3);
+            statusLayout.Controls.Add(lblSendCounters, 0, 4);
             statusLayout.Controls.Add(statusActionsLayout, 1, 0);
             statusLayout.Dock = DockStyle.Fill;
             statusLayout.Location = new Point(12, 26);
             statusLayout.Name = "statusLayout";
             statusLayout.RowCount = 5;
-            statusLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
-            statusLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            statusLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            statusLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            statusLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            statusLayout.Size = new Size(845, 102);
+            statusLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
+            statusLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 18F));
+            statusLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));
+            statusLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 18F));
+            statusLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 18F));
+            statusLayout.Size = new Size(871, 112);
             statusLayout.TabIndex = 0;
             //
             // lblGeneralStatus
@@ -655,7 +912,7 @@ namespace Automate_Whatsapp
             lblGeneralStatus.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             lblGeneralStatus.Location = new Point(3, 0);
             lblGeneralStatus.Name = "lblGeneralStatus";
-            lblGeneralStatus.Size = new Size(638, 22);
+            lblGeneralStatus.Size = new Size(633, 32);
             lblGeneralStatus.TabIndex = 0;
             lblGeneralStatus.Text = "Estado general: Sin archivo";
             lblGeneralStatus.TextAlign = ContentAlignment.MiddleLeft;
@@ -665,43 +922,48 @@ namespace Automate_Whatsapp
             lblProgress.Dock = DockStyle.Fill;
             lblProgress.AutoEllipsis = true;
             lblProgress.ForeColor = Color.FromArgb(75, 85, 99);
-            lblProgress.Location = new Point(3, 22);
+            lblProgress.Location = new Point(3, 32);
             lblProgress.Name = "lblProgress";
-            lblProgress.Size = new Size(638, 20);
+            lblProgress.Size = new Size(865, 18);
             lblProgress.TabIndex = 1;
             lblProgress.Text = "Progreso";
             lblProgress.TextAlign = ContentAlignment.MiddleLeft;
+            statusLayout.SetColumnSpan(lblProgress, 2);
             //
             // lblProgressText
             //
             lblProgressText.Dock = DockStyle.Fill;
             lblProgressText.AutoEllipsis = true;
-            lblProgressText.Location = new Point(3, 42);
+            lblProgressText.Location = new Point(3, 76);
             lblProgressText.Name = "lblProgressText";
-            lblProgressText.Size = new Size(638, 20);
+            lblProgressText.Size = new Size(865, 18);
             lblProgressText.TabIndex = 2;
             lblProgressText.Text = "Procesados: 0 / 0";
             lblProgressText.TextAlign = ContentAlignment.MiddleLeft;
+            statusLayout.SetColumnSpan(lblProgressText, 2);
             //
             // lblSendCounters
             //
             lblSendCounters.Dock = DockStyle.Fill;
             lblSendCounters.AutoEllipsis = true;
-            lblSendCounters.Location = new Point(3, 62);
+            lblSendCounters.Location = new Point(3, 94);
             lblSendCounters.Name = "lblSendCounters";
-            lblSendCounters.Size = new Size(638, 20);
+            lblSendCounters.Size = new Size(865, 18);
             lblSendCounters.TabIndex = 3;
             lblSendCounters.Text = "Éxitos: 0 | Errores: 0 | Omitidos: 0";
             lblSendCounters.TextAlign = ContentAlignment.MiddleLeft;
+            statusLayout.SetColumnSpan(lblSendCounters, 2);
             //
             // progressBar1
             //
             progressBar1.Dock = DockStyle.Fill;
-            progressBar1.Location = new Point(3, 85);
-            progressBar1.MinimumSize = new Size(120, 14);
+            progressBar1.Location = new Point(3, 53);
+            progressBar1.Margin = new Padding(3, 3, 3, 5);
+            progressBar1.MinimumSize = new Size(120, 16);
             progressBar1.Name = "progressBar1";
-            progressBar1.Size = new Size(607, 14);
+            progressBar1.Size = new Size(865, 18);
             progressBar1.TabIndex = 4;
+            statusLayout.SetColumnSpan(progressBar1, 2);
             //
             // statusActionsLayout
             //
@@ -709,11 +971,10 @@ namespace Automate_Whatsapp
             statusActionsLayout.Controls.Add(btnPauseResume);
             statusActionsLayout.Dock = DockStyle.Fill;
             statusActionsLayout.FlowDirection = FlowDirection.RightToLeft;
-            statusActionsLayout.Location = new Point(613, 0);
+            statusActionsLayout.Location = new Point(639, 0);
             statusActionsLayout.Margin = new Padding(0);
             statusActionsLayout.Name = "statusActionsLayout";
-            statusLayout.SetRowSpan(statusActionsLayout, 5);
-            statusActionsLayout.Size = new Size(232, 102);
+            statusActionsLayout.Size = new Size(232, 32);
             statusActionsLayout.TabIndex = 5;
             statusActionsLayout.WrapContents = false;
             //
@@ -721,8 +982,8 @@ namespace Automate_Whatsapp
             //
             btnCancel.Anchor = AnchorStyles.Right;
             btnCancel.Enabled = false;
-            btnCancel.Location = new Point(128, 11);
-            btnCancel.Margin = new Padding(8, 11, 0, 0);
+            btnCancel.Location = new Point(128, 0);
+            btnCancel.Margin = new Padding(8, 0, 0, 0);
             btnCancel.Name = "btnCancel";
             btnCancel.Size = new Size(104, 32);
             btnCancel.TabIndex = 1;
@@ -734,8 +995,8 @@ namespace Automate_Whatsapp
             //
             btnPauseResume.Anchor = AnchorStyles.Right;
             btnPauseResume.Enabled = false;
-            btnPauseResume.Location = new Point(16, 11);
-            btnPauseResume.Margin = new Padding(0, 11, 0, 0);
+            btnPauseResume.Location = new Point(16, 0);
+            btnPauseResume.Margin = new Padding(0);
             btnPauseResume.Name = "btnPauseResume";
             btnPauseResume.Size = new Size(104, 32);
             btnPauseResume.TabIndex = 0;
@@ -747,11 +1008,11 @@ namespace Automate_Whatsapp
             //
             grpActivity.Controls.Add(logLayout);
             grpActivity.Dock = DockStyle.Fill;
-            grpActivity.Location = new Point(0, 744);
+            grpActivity.Location = new Point(0, 372);
             grpActivity.Margin = new Padding(0);
             grpActivity.Name = "grpActivity";
             grpActivity.Padding = new Padding(12, 10, 12, 12);
-            grpActivity.Size = new Size(869, 158);
+            grpActivity.Size = new Size(895, 348);
             grpActivity.TabIndex = 4;
             grpActivity.TabStop = false;
             grpActivity.Text = "5. Actividad / logs";
@@ -766,7 +1027,7 @@ namespace Automate_Whatsapp
             logLayout.Name = "logLayout";
             logLayout.RowCount = 1;
             logLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            logLayout.Size = new Size(864, 126);
+            logLayout.Size = new Size(871, 310);
             logLayout.TabIndex = 0;
             //
             // txtLog
@@ -778,7 +1039,7 @@ namespace Automate_Whatsapp
             txtLog.Name = "txtLog";
             txtLog.ReadOnly = true;
             txtLog.ScrollBars = ScrollBars.Vertical;
-            txtLog.Size = new Size(858, 120);
+            txtLog.Size = new Size(865, 304);
             txtLog.TabIndex = 0;
             //
             // openFileDialog1
@@ -792,22 +1053,29 @@ namespace Automate_Whatsapp
             //
             // Form1
             //
-            AutoScaleDimensions = new SizeF(7F, 15F);
-            AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(920, 880);
-            AutoScroll = true;
+            AutoScaleDimensions = new SizeF(96F, 96F);
+            AutoScaleMode = AutoScaleMode.Dpi;
+            ClientSize = new Size(920, 760);
+            AutoScroll = false;
             Controls.Add(mainScrollPanel);
+            Controls.Add(mainMenuStrip);
             FormBorderStyle = FormBorderStyle.Sizable;
-            MinimumSize = new Size(760, 560);
+            MainMenuStrip = mainMenuStrip;
+            MinimumSize = new Size(800, 600);
             Name = "Form1";
-            Padding = new Padding(16);
+            Padding = new Padding(0);
             StartPosition = FormStartPosition.CenterScreen;
             Text = "AutoWhatsApp";
             FormClosing += Form1_FormClosing;
+            configurationContentLayout.ResumeLayout(false);
+            configurationHeaderLayout.ResumeLayout(false);
+            configurationLayout.ResumeLayout(false);
+            grpConfiguration.ResumeLayout(false);
             mainLayout.ResumeLayout(false);
             mainScrollPanel.ResumeLayout(false);
             grpExcelFile.ResumeLayout(false);
             fileLayout.ResumeLayout(false);
+            fileLayout.PerformLayout();
             grpExcelPreview.ResumeLayout(false);
             previewLayout.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvExcelPreview).EndInit();
@@ -825,13 +1093,36 @@ namespace Automate_Whatsapp
             grpActivity.ResumeLayout(false);
             logLayout.ResumeLayout(false);
             logLayout.PerformLayout();
+            mainMenuStrip.ResumeLayout(false);
+            mainMenuStrip.PerformLayout();
             ResumeLayout(false);
+            PerformLayout();
         }
 
         #endregion
 
+        private System.Windows.Forms.MenuStrip mainMenuStrip;
+        private System.Windows.Forms.ToolStripMenuItem archivoToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem seleccionarExcelToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem descargarPlantillaExcelToolStripMenuItem;
+        private System.Windows.Forms.ToolStripSeparator archivoToolStripSeparator;
+        private System.Windows.Forms.ToolStripMenuItem salirToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem configuracionToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem lineaWhatsAppToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem cambiarAutomaticamenteSiFallaToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem seleccionarLineasToolStripMenuItem;
+        private System.Windows.Forms.ToolStripSeparator configuracionToolStripSeparator;
+        private System.Windows.Forms.ToolStripMenuItem mostrarVistaPreviaExcelToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem ayudaToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem acercaDeAutoWhatsAppToolStripMenuItem;
         private System.Windows.Forms.TableLayoutPanel mainLayout;
         private System.Windows.Forms.Panel mainScrollPanel;
+        private System.Windows.Forms.GroupBox grpConfiguration;
+        private System.Windows.Forms.TableLayoutPanel configurationLayout;
+        private System.Windows.Forms.TableLayoutPanel configurationHeaderLayout;
+        private System.Windows.Forms.Button btnToggleConfiguration;
+        private System.Windows.Forms.Label lblConfigurationSummary;
+        private System.Windows.Forms.TableLayoutPanel configurationContentLayout;
         private System.Windows.Forms.GroupBox grpExcelFile;
         private System.Windows.Forms.TableLayoutPanel fileLayout;
         private System.Windows.Forms.GroupBox grpExcelPreview;
@@ -863,7 +1154,10 @@ namespace Automate_Whatsapp
         private System.Windows.Forms.GroupBox grpActivity;
         private System.Windows.Forms.TableLayoutPanel logLayout;
         private System.Windows.Forms.Button btnSelectFile;
+        private System.Windows.Forms.Button btnDownloadTemplate;
+        private System.Windows.Forms.CheckBox chkShowExcelPreview;
         private System.Windows.Forms.Label lblFilePath;
+        private System.Windows.Forms.Label lblExcelCompactSummary;
         private System.Windows.Forms.ToolTip uiToolTip;
         private System.Windows.Forms.Button btnSend;
         private System.Windows.Forms.Button btnConfigureLines;

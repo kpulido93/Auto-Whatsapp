@@ -24,6 +24,9 @@ namespace Automate_Whatsapp
         private bool isSending = false;
         private bool cancellationRequested = false;
         private bool isPreparingLines = false;
+        private bool isLoadingExcelPreview = false;
+        private bool isConfigurationExpanded = false;
+        private int excelPreviewLoadVersion = 0;
 
         private const string StatusNoFile = "Sin archivo";
         private const string StatusReady = "Listo";
@@ -32,19 +35,260 @@ namespace Automate_Whatsapp
         private const string StatusPaused = "Pausado";
         private const string StatusCancelled = "Cancelado";
         private const string StatusFinished = "Finalizado";
-        private const int ResponsiveLayoutPadding = 16;
+        private const int ConfigurationRowIndex = 0;
+        private const int ExcelPreviewRowIndex = 2;
+        private const int ResponsiveLayoutPadding = 8;
         private const int ResponsiveLayoutMinimumWidth = 700;
-        private const int ResponsiveLayoutMinimumHeight = 902;
+        private const int ResponsiveLayoutMinimumHeightWithoutPreview = 560;
+        private const int ResponsiveLayoutMinimumHeightWithPreview = 740;
+        private const float ConfigurationCollapsedHeight = 0F;
+        private const float ConfigurationExpandedHeight = 236F;
+        private const float ExcelPreviewCollapsedHeight = 0F;
+        private const float ExcelPreviewExpandedHeight = 184F;
+        private const string ApplicationIconResourceName = "Resources.icon.ico";
 
         public Form1()
         {
             InitializeComponent();
+            ApplyApplicationIcon();
+            ApplyConfigurationVisibility();
+            ApplyExcelPreviewVisibility();
             AdjustResponsiveLayout();
             InitializeScheduleControls();
             SetSendFeedback(StatusNoFile, 0, 0, 0, 0, 0);
             UpdateActionButtons();
             LoadWhatsAppLines();
             InitializeSendOrchestrator();
+            UpdateMenuState();
+        }
+
+        private void ApplyApplicationIcon()
+        {
+            using Stream? iconStream = typeof(Form1).Assembly.GetManifestResourceStream(ApplicationIconResourceName);
+
+            if (iconStream != null)
+            {
+                using var embeddedIcon = new Icon(iconStream);
+                Icon = (Icon)embeddedIcon.Clone();
+                return;
+            }
+
+            string iconPath = Path.Combine(AppContext.BaseDirectory, "Resources", "icon.ico");
+            if (File.Exists(iconPath))
+            {
+                Icon = new Icon(iconPath);
+            }
+        }
+
+        private void chkShowExcelPreview_CheckedChanged(object sender, EventArgs e)
+        {
+            mostrarVistaPreviaExcelToolStripMenuItem.Checked = chkShowExcelPreview.Checked;
+            ApplyExcelPreviewVisibility();
+        }
+
+        private void btnToggleConfiguration_Click(object sender, EventArgs e)
+        {
+            isConfigurationExpanded = !isConfigurationExpanded;
+            ApplyConfigurationVisibility();
+        }
+
+        private void chkAutoLineFallback_CheckedChanged(object sender, EventArgs e)
+        {
+            cambiarAutomaticamenteSiFallaToolStripMenuItem.Checked = chkAutoLineFallback.Checked;
+            UpdateConfigurationSummary();
+            UpdateMenuState();
+        }
+
+        private void ApplyConfigurationVisibility()
+        {
+            mainLayout.SuspendLayout();
+            try
+            {
+                configurationContentLayout.Visible = isConfigurationExpanded;
+                grpConfiguration.Visible = isConfigurationExpanded;
+                mainLayout.RowStyles[ConfigurationRowIndex].Height = isConfigurationExpanded
+                    ? ConfigurationExpandedHeight
+                    : ConfigurationCollapsedHeight;
+                btnToggleConfiguration.Text = isConfigurationExpanded ? "Ocultar" : "Mostrar";
+            }
+            finally
+            {
+                mainLayout.ResumeLayout(true);
+            }
+
+            UpdateConfigurationSummary();
+            AdjustResponsiveLayout();
+        }
+
+        private void ApplyExcelPreviewVisibility()
+        {
+            bool showPreview = chkShowExcelPreview.Checked;
+
+            mainLayout.SuspendLayout();
+            try
+            {
+                grpExcelPreview.Visible = showPreview;
+                dgvExcelPreview.Visible = showPreview;
+                mainLayout.RowStyles[ExcelPreviewRowIndex].Height = showPreview
+                    ? ExcelPreviewExpandedHeight
+                    : ExcelPreviewCollapsedHeight;
+
+                if (showPreview)
+                {
+                    BindExcelPreviewGrid();
+                }
+                else
+                {
+                    ClearExcelPreviewGrid();
+                }
+            }
+            finally
+            {
+                mainLayout.ResumeLayout(true);
+            }
+
+            AdjustResponsiveLayout();
+        }
+
+        private async void seleccionarExcelToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            await SelectExcelFileAsync();
+        }
+
+        private void descargarPlantillaExcelToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            DownloadExcelTemplate();
+        }
+
+        private void salirToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            Close();
+        }
+
+        private void configuracionToolStripMenuItem_DropDownOpening(object sender, EventArgs e)
+        {
+            UpdateMenuState();
+            RefreshWhatsAppLineMenu();
+        }
+
+        private void lineaWhatsAppToolStripMenuItem_DropDownOpening(object sender, EventArgs e)
+        {
+            RefreshWhatsAppLineMenu();
+        }
+
+        private void cambiarAutomaticamenteSiFallaToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (chkAutoLineFallback.Checked != cambiarAutomaticamenteSiFallaToolStripMenuItem.Checked)
+            {
+                chkAutoLineFallback.Checked = cambiarAutomaticamenteSiFallaToolStripMenuItem.Checked;
+            }
+        }
+
+        private void seleccionarLineasToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            btnSelectRunLines_Click(sender, e);
+        }
+
+        private void mostrarVistaPreviaExcelToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (chkShowExcelPreview.Checked != mostrarVistaPreviaExcelToolStripMenuItem.Checked)
+            {
+                chkShowExcelPreview.Checked = mostrarVistaPreviaExcelToolStripMenuItem.Checked;
+            }
+        }
+
+        private void acercaDeAutoWhatsAppToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            using var aboutDialog = new AboutDialog(Icon);
+            aboutDialog.ShowDialog(this);
+        }
+
+        private void UpdateMenuState()
+        {
+            seleccionarExcelToolStripMenuItem.Enabled = btnSelectFile.Enabled;
+            descargarPlantillaExcelToolStripMenuItem.Enabled = btnDownloadTemplate.Enabled;
+            lineaWhatsAppToolStripMenuItem.Enabled = true;
+            cambiarAutomaticamenteSiFallaToolStripMenuItem.Enabled = chkAutoLineFallback.Enabled;
+            cambiarAutomaticamenteSiFallaToolStripMenuItem.Checked = chkAutoLineFallback.Checked;
+            seleccionarLineasToolStripMenuItem.Enabled = btnSelectRunLines.Enabled;
+            mostrarVistaPreviaExcelToolStripMenuItem.Enabled = chkShowExcelPreview.Enabled;
+            mostrarVistaPreviaExcelToolStripMenuItem.Checked = chkShowExcelPreview.Checked;
+        }
+
+        private void RefreshWhatsAppLineMenu()
+        {
+            while (lineaWhatsAppToolStripMenuItem.DropDownItems.Count > 0)
+            {
+                var item = lineaWhatsAppToolStripMenuItem.DropDownItems[0];
+                lineaWhatsAppToolStripMenuItem.DropDownItems.RemoveAt(0);
+                item.Dispose();
+            }
+
+            var configureLinesItem = new ToolStripMenuItem("Configurar líneas...")
+            {
+                Enabled = btnConfigureLines.Enabled
+            };
+            configureLinesItem.Click += (_, args) => btnConfigureLines_Click(configureLinesItem, args);
+            lineaWhatsAppToolStripMenuItem.DropDownItems.Add(configureLinesItem);
+            lineaWhatsAppToolStripMenuItem.DropDownItems.Add(new ToolStripSeparator());
+
+            if (whatsAppLines.Count == 0)
+            {
+                lineaWhatsAppToolStripMenuItem.DropDownItems.Add(new ToolStripMenuItem("Sin verificar")
+                {
+                    Enabled = false
+                });
+                return;
+            }
+
+            string? selectedLineId = SelectedWhatsAppLine?.Id;
+            foreach (var line in whatsAppLines)
+            {
+                var lineMenuItem = new ToolStripMenuItem(line.DisplayNameWithState)
+                {
+                    Checked = string.Equals(line.Id, selectedLineId, StringComparison.OrdinalIgnoreCase),
+                    Enabled = cmbWhatsAppLine.Enabled,
+                    Tag = line
+                };
+
+                lineMenuItem.Click += whatsappLineToolStripMenuItem_Click;
+                lineaWhatsAppToolStripMenuItem.DropDownItems.Add(lineMenuItem);
+            }
+
+            lineaWhatsAppToolStripMenuItem.DropDownItems.Add(new ToolStripSeparator());
+            var prepareLineItem = new ToolStripMenuItem("Preparar línea seleccionada")
+            {
+                Enabled = btnPrepareLine.Enabled
+            };
+            prepareLineItem.Click += (_, args) => btnPrepareLine_Click(prepareLineItem, args);
+            lineaWhatsAppToolStripMenuItem.DropDownItems.Add(prepareLineItem);
+
+            var prepareAllLinesItem = new ToolStripMenuItem("Preparar todas las líneas")
+            {
+                Enabled = btnPrepareAllLines.Enabled
+            };
+            prepareAllLinesItem.Click += (_, args) => btnPrepareAllLines_Click(prepareAllLinesItem, args);
+            lineaWhatsAppToolStripMenuItem.DropDownItems.Add(prepareAllLinesItem);
+        }
+
+        private void whatsappLineToolStripMenuItem_Click(object? sender, EventArgs e)
+        {
+            if (sender is not ToolStripMenuItem { Tag: WhatsAppLine line } || !cmbWhatsAppLine.Enabled)
+            {
+                return;
+            }
+
+            var matchingLine = whatsAppLines.FirstOrDefault(item =>
+                string.Equals(item.Id, line.Id, StringComparison.OrdinalIgnoreCase));
+
+            if (matchingLine == null)
+            {
+                return;
+            }
+
+            cmbWhatsAppLine.SelectedItem = matchingLine;
+            RefreshWhatsAppLineMenu();
+            UpdateMenuState();
         }
 
         private void LoadWhatsAppLines(string? selectedLineId = null)
@@ -100,6 +344,7 @@ namespace Automate_Whatsapp
 
             ReconcileSelectedLinesForRun(includePrimary: true);
             UpdateSelectedLineStatus();
+            RefreshWhatsAppLineMenu();
             UpdateActionButtons();
             Log($"Líneas habilitadas cargadas: {whatsAppLines.Count}");
         }
@@ -139,6 +384,8 @@ namespace Automate_Whatsapp
             }
 
             UpdateSelectedLineStatus();
+            RefreshWhatsAppLineMenu();
+            UpdateMenuState();
         }
 
         private WhatsAppLine UpdateWhatsAppLineState(WhatsAppLine line, WhatsAppLineOperationalState state)
@@ -166,6 +413,7 @@ namespace Automate_Whatsapp
             {
                 lblLinePreparationStatus.Text = "Estado línea: sin línea";
                 lblLinePreparationStatus.ForeColor = Color.FromArgb(75, 85, 99);
+                UpdateConfigurationSummary();
                 return;
             }
 
@@ -177,6 +425,7 @@ namespace Automate_Whatsapp
                 WhatsAppLineOperationalState.NotAvailable => Color.FromArgb(185, 28, 28),
                 _ => Color.FromArgb(75, 85, 99)
             };
+            UpdateConfigurationSummary();
         }
 
         private void ReconcileSelectedLinesForRun(bool includePrimary)
@@ -204,11 +453,31 @@ namespace Automate_Whatsapp
             {
                 lblRunLinesSummary.Text = "Líneas seleccionadas: ninguna";
                 lblRunLinesSummary.ForeColor = Color.FromArgb(185, 28, 28);
+                UpdateConfigurationSummary();
                 return;
             }
 
             lblRunLinesSummary.Text = $"Líneas seleccionadas: {string.Join(", ", selectedLines.Select(line => line.DisplayName))}";
             lblRunLinesSummary.ForeColor = Color.FromArgb(75, 85, 99);
+            UpdateConfigurationSummary();
+        }
+
+        private void UpdateConfigurationSummary()
+        {
+            if (lblConfigurationSummary == null || chkAutoLineFallback == null)
+            {
+                return;
+            }
+
+            string selectedLineName = SelectedWhatsAppLine?.DisplayName ?? "sin línea";
+            string fallbackText = chkAutoLineFallback.Checked ? "Sí" : "No";
+            var selectedLines = GetSelectedLinesForRun();
+            string selectedLineNames = selectedLines.Count == 0
+                ? "ninguna"
+                : string.Join(", ", selectedLines.Select(line => line.DisplayName));
+
+            lblConfigurationSummary.Text =
+                $"Configuración: {selectedLineName} · Auto-fallback: {fallbackText} · Seleccionadas: {selectedLineNames}";
         }
 
         private List<WhatsAppLine> GetSelectedLinesForRun()
@@ -277,11 +546,18 @@ namespace Automate_Whatsapp
                 - SystemInformation.VerticalScrollBarWidth;
             int availableHeight = mainScrollPanel.ClientSize.Height
                 - (ResponsiveLayoutPadding * 2);
+            int minimumHeight = chkShowExcelPreview?.Checked == true
+                ? ResponsiveLayoutMinimumHeightWithPreview
+                : ResponsiveLayoutMinimumHeightWithoutPreview;
+            if (isConfigurationExpanded)
+            {
+                minimumHeight += (int)(ConfigurationExpandedHeight - ConfigurationCollapsedHeight);
+            }
 
             mainLayout.Location = new Point(ResponsiveLayoutPadding, ResponsiveLayoutPadding);
             mainLayout.Size = new Size(
                 Math.Max(ResponsiveLayoutMinimumWidth, availableWidth),
-                Math.Max(ResponsiveLayoutMinimumHeight, availableHeight));
+                Math.Max(minimumHeight, availableHeight));
         }
 
         private void InitializeScheduleControls()
@@ -386,6 +662,8 @@ namespace Automate_Whatsapp
             }
 
             UpdateSelectedLineStatus();
+            RefreshWhatsAppLineMenu();
+            UpdateMenuState();
         }
 
         private void cmbWhatsAppLine_SelectedIndexChanged(object sender, EventArgs e)
@@ -404,6 +682,8 @@ namespace Automate_Whatsapp
             sendOrchestrator.SetSelectedLine(selectedLine);
             ReconcileSelectedLinesForRun(includePrimary: true);
             UpdateSelectedLineStatus();
+            RefreshWhatsAppLineMenu();
+            UpdateMenuState();
         }
 
         private void btnPrepareLine_Click(object sender, EventArgs e)
@@ -537,21 +817,114 @@ namespace Automate_Whatsapp
             MessageBox.Show(summary, "Resumen de preparación", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-        private void btnSelectFile_Click(object sender, EventArgs e)
+        private async void btnSelectFile_Click(object sender, EventArgs e)
+        {
+            await SelectExcelFileAsync();
+        }
+
+        private async Task SelectExcelFileAsync()
         {
             openFileDialog1.Filter = "Archivos Excel|*.xlsx;*.xls";
             if (openFileDialog1.ShowDialog() == DialogResult.OK)
             {
-                SetSelectedExcelFile(openFileDialog1.FileName);
+                await SetSelectedExcelFileAsync(openFileDialog1.FileName);
             }
         }
 
-        private void SetSelectedExcelFile(string selectedPath)
+        private void btnDownloadTemplate_Click(object sender, EventArgs e)
+        {
+            DownloadExcelTemplate();
+        }
+
+        private void DownloadExcelTemplate()
+        {
+            using var saveFileDialog = new SaveFileDialog
+            {
+                AddExtension = true,
+                DefaultExt = "xlsx",
+                FileName = ExcelTemplateService.DefaultFileName,
+                Filter = "Libro de Excel (*.xlsx)|*.xlsx",
+                OverwritePrompt = true,
+                Title = "Guardar plantilla Excel"
+            };
+
+            if (saveFileDialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+
+            try
+            {
+                ExcelTemplateService.CreateTemplate(saveFileDialog.FileName);
+                Log($"Plantilla Excel creada: {saveFileDialog.FileName}");
+                MessageBox.Show(
+                    "La plantilla Excel se creó correctamente.",
+                    "Descargar plantilla",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                Log($"No se pudo crear la plantilla Excel: {ex.Message}");
+                MessageBox.Show(
+                    $"No se pudo crear la plantilla Excel.\n\n{ex.Message}",
+                    "Descargar plantilla",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private async Task SetSelectedExcelFileAsync(string selectedPath)
         {
             excelPath = selectedPath;
             lblFilePath.Text = $"Archivo: {Path.GetFileName(excelPath)}";
             uiToolTip.SetToolTip(lblFilePath, excelPath);
-            LoadExcelPreview();
+            await LoadExcelPreviewAsync(selectedPath, ++excelPreviewLoadVersion);
+        }
+
+        private async Task LoadExcelPreviewAsync(string selectedPath, int loadVersion)
+        {
+            isLoadingExcelPreview = true;
+            excelPreviewRows = new List<ExcelMessagePreviewRow>();
+            ClearExcelPreviewGrid();
+            lblPreviewSummary.Text = "Total filas: 0 | Válidas: 0 | Inválidas: 0 | Audios: 0";
+            lblPreviewStatus.Text = "Analizando archivo Excel...";
+            lblPreviewStatus.ForeColor = Color.FromArgb(75, 85, 99);
+            lblExcelCompactSummary.Text = $"{Path.GetFileName(selectedPath)} - analizando Excel...";
+            lblExcelCompactSummary.ForeColor = Color.FromArgb(75, 85, 99);
+            SetSendFeedback(StatusNoFile, 0, 0, 0, 0, 0);
+            UpdateActionButtons();
+
+            try
+            {
+                var loadedRows = await Task.Run(() => ExcelReader.ReadPreview(selectedPath));
+                if (loadVersion != excelPreviewLoadVersion)
+                {
+                    return;
+                }
+
+                excelPreviewRows = loadedRows;
+                BindExcelPreview();
+                Log("Archivo Excel seleccionado correctamente.");
+                Log($"Excel analizado: {excelPreviewRows.Count} filas.");
+            }
+            catch (Exception ex)
+            {
+                if (loadVersion != excelPreviewLoadVersion)
+                {
+                    return;
+                }
+
+                ClearSelectedExcelAfterReadError(ex);
+            }
+            finally
+            {
+                if (loadVersion == excelPreviewLoadVersion)
+                {
+                    isLoadingExcelPreview = false;
+                    UpdateActionButtons();
+                }
+            }
         }
 
         private void LoadExcelPreview()
@@ -561,29 +934,69 @@ namespace Automate_Whatsapp
                 excelPreviewRows = ExcelReader.ReadPreview(excelPath);
                 BindExcelPreview();
                 Log("Archivo Excel seleccionado correctamente.");
-                Log($"Vista previa cargada: {excelPreviewRows.Count} filas.");
+                Log($"Excel analizado: {excelPreviewRows.Count} filas.");
             }
             catch (Exception ex)
             {
-                excelPath = "";
-                excelPreviewRows = new List<ExcelMessagePreviewRow>();
-                lblFilePath.Text = "Archivo seleccionado: ninguno";
-                uiToolTip.SetToolTip(lblFilePath, lblFilePath.Text);
-                BindExcelPreview();
-                lblPreviewStatus.Text = $"No se pudo leer el Excel: {ex.Message}";
-                lblPreviewStatus.ForeColor = Color.FromArgb(185, 28, 28);
-                SetSendFeedback(StatusNoFile, 0, 0, 0, 0, 0);
-                UpdateActionButtons();
-                Log($"No se pudo leer el Excel seleccionado: {ex.Message}");
+                ClearSelectedExcelAfterReadError(ex);
             }
+        }
+
+        private void ClearSelectedExcelAfterReadError(Exception ex)
+        {
+            excelPath = "";
+            excelPreviewRows = new List<ExcelMessagePreviewRow>();
+            lblFilePath.Text = "Archivo seleccionado: ninguno";
+            uiToolTip.SetToolTip(lblFilePath, lblFilePath.Text);
+            BindExcelPreview();
+            lblPreviewStatus.Text = $"No se pudo leer el Excel: {ex.Message}";
+            lblPreviewStatus.ForeColor = Color.FromArgb(185, 28, 28);
+            lblExcelCompactSummary.Text = "Resumen: no se pudo leer el Excel seleccionado.";
+            lblExcelCompactSummary.ForeColor = Color.FromArgb(185, 28, 28);
+            SetSendFeedback(StatusNoFile, 0, 0, 0, 0, 0);
+            UpdateActionButtons();
+            Log($"No se pudo leer el Excel seleccionado: {ex.Message}");
         }
 
         private void BindExcelPreview()
         {
-            dgvExcelPreview.DataSource = null;
-            dgvExcelPreview.DataSource = excelPreviewRows;
             UpdateExcelPreviewSummary();
-            ApplyExcelPreviewRowStyles();
+
+            if (chkShowExcelPreview.Checked)
+            {
+                BindExcelPreviewGrid();
+                return;
+            }
+
+            ClearExcelPreviewGrid();
+        }
+
+        private void BindExcelPreviewGrid()
+        {
+            if (!chkShowExcelPreview.Checked)
+            {
+                return;
+            }
+
+            dgvExcelPreview.SuspendLayout();
+            try
+            {
+                dgvExcelPreview.DataSource = null;
+                dgvExcelPreview.DataSource = excelPreviewRows;
+                ApplyExcelPreviewRowStyles();
+            }
+            finally
+            {
+                dgvExcelPreview.ResumeLayout();
+            }
+        }
+
+        private void ClearExcelPreviewGrid()
+        {
+            if (dgvExcelPreview.DataSource != null)
+            {
+                dgvExcelPreview.DataSource = null;
+            }
         }
 
         private void UpdateExcelPreviewSummary()
@@ -593,7 +1006,25 @@ namespace Automate_Whatsapp
             int invalidRows = totalRows - validRows;
             int audioRows = excelPreviewRows.Count(row => row.IsValid && row.ToAudio);
 
-            lblPreviewSummary.Text = $"Total filas: {totalRows} | Válidas: {validRows} | Inválidas: {invalidRows} | Audios: {audioRows}";
+            string totalsText = $"Total filas: {totalRows} | Válidas: {validRows} | Inválidas: {invalidRows} | Audios: {audioRows}";
+            lblPreviewSummary.Text = totalsText;
+
+            if (string.IsNullOrWhiteSpace(excelPath))
+            {
+                lblExcelCompactSummary.Text = "Resumen: sin Excel seleccionado.";
+                lblExcelCompactSummary.ForeColor = Color.FromArgb(75, 85, 99);
+                lblPreviewStatus.Text = "Selecciona un archivo Excel para revisar las filas antes de programar.";
+                lblPreviewStatus.ForeColor = Color.FromArgb(75, 85, 99);
+            }
+            else
+            {
+                lblExcelCompactSummary.Text = $"{Path.GetFileName(excelPath)} - {totalsText}";
+                lblExcelCompactSummary.ForeColor = validRows == 0
+                    ? Color.FromArgb(185, 28, 28)
+                    : invalidRows > 0
+                        ? Color.FromArgb(180, 83, 9)
+                        : Color.FromArgb(21, 128, 61);
+            }
 
             if (!isScheduled && !isSending)
             {
@@ -602,6 +1033,11 @@ namespace Automate_Whatsapp
             }
 
             UpdateActionButtons();
+
+            if (string.IsNullOrWhiteSpace(excelPath))
+            {
+                return;
+            }
 
             if (totalRows == 0)
             {
@@ -709,6 +1145,7 @@ namespace Automate_Whatsapp
             bool operationActive = (isScheduled || isSending) && !cancellationRequested;
             bool operationBlockingSetup = isScheduled || isSending || isPreparingLines;
             bool selectedLineReady = SelectedWhatsAppLine?.OperationalState == WhatsAppLineOperationalState.Ready;
+            bool canSendLoadedExcel = ValidPreviewRows > 0 && !isLoadingExcelPreview;
 
             btnPauseResume.Enabled = operationActive;
             btnCancel.Enabled = operationActive;
@@ -716,11 +1153,12 @@ namespace Automate_Whatsapp
             btnPrepareAllLines.Enabled = whatsAppLines.Count > 0 && !operationBlockingSetup;
             btnSelectRunLines.Enabled = whatsAppLines.Count > 0 && !operationBlockingSetup;
             btnConfigureLines.Enabled = !operationBlockingSetup;
-            btnSend.Enabled = ValidPreviewRows > 0 && selectedLineReady && !operationBlockingSetup;
-            btnSendNow.Enabled = ValidPreviewRows > 0 && selectedLineReady && !operationBlockingSetup;
+            btnSend.Enabled = canSendLoadedExcel && selectedLineReady && !operationBlockingSetup;
+            btnSendNow.Enabled = canSendLoadedExcel && selectedLineReady && !operationBlockingSetup;
             btnChangeScheduleTime.Enabled = !operationBlockingSetup;
             cmbWhatsAppLine.Enabled = !operationBlockingSetup;
             chkAutoLineFallback.Enabled = !operationBlockingSetup;
+            UpdateMenuState();
         }
 
         private void dgvExcelPreview_DataBindingComplete(object sender, DataGridViewBindingCompleteEventArgs e)
@@ -1089,6 +1527,16 @@ namespace Automate_Whatsapp
             if (string.IsNullOrEmpty(excelPath))
             {
                 MessageBox.Show("Seleccione un archivo Excel primero.", "Advertencia", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+
+            if (isLoadingExcelPreview)
+            {
+                MessageBox.Show(
+                    "Espera a que termine el análisis del Excel antes de programar el envío.",
+                    "Excel en análisis",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
                 return false;
             }
 
