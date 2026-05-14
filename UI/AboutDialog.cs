@@ -8,20 +8,24 @@ namespace Automate_Whatsapp
         public AboutDialog(Icon? applicationIcon)
         {
             var assembly = Assembly.GetExecutingAssembly();
-            var versionInfo = FileVersionInfo.GetVersionInfo(Application.ExecutablePath);
+            string assemblyPath = FirstNonEmpty(assembly.Location, Application.ExecutablePath);
+            var versionInfo = FileVersionInfo.GetVersionInfo(assemblyPath);
             string version = FirstNonEmpty(
+                assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
                 versionInfo.ProductVersion,
                 Application.ProductVersion,
                 assembly.GetName().Version?.ToString(),
                 "desconocida");
+            string authors = GetAssemblyMetadata(assembly, "Authors");
             string company = FirstNonEmpty(
                 versionInfo.CompanyName,
                 Application.CompanyName,
-                assembly.GetCustomAttribute<AssemblyCompanyAttribute>()?.Company,
-                "No disponible");
+                assembly.GetCustomAttribute<AssemblyCompanyAttribute>()?.Company);
+            string attribution = BuildAttribution(authors, company);
             string description = FirstNonEmpty(
-                versionInfo.FileDescription,
                 assembly.GetCustomAttribute<AssemblyDescriptionAttribute>()?.Description,
+                versionInfo.Comments,
+                versionInfo.FileDescription,
                 "Automatización de envíos de WhatsApp desde archivos Excel.");
 
             Text = "Acerca de AutoWhatsApp";
@@ -82,7 +86,7 @@ namespace Automate_Whatsapp
             {
                 AutoSize = false,
                 Dock = DockStyle.Fill,
-                Text = $"Autor/compañía: {company}",
+                Text = $"Autor/compañía: {attribution}",
                 TextAlign = ContentAlignment.MiddleLeft
             }, 1, 2);
 
@@ -114,6 +118,38 @@ namespace Automate_Whatsapp
 
             AcceptButton = okButton;
             Controls.Add(layout);
+        }
+
+        private static string GetAssemblyMetadata(Assembly assembly, string key)
+        {
+            foreach (var attribute in assembly.GetCustomAttributes<AssemblyMetadataAttribute>())
+            {
+                if (string.Equals(attribute.Key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    return attribute.Value ?? "";
+                }
+            }
+
+            return "";
+        }
+
+        private static string BuildAttribution(string? authors, string? company)
+        {
+            string authorValue = FirstNonEmpty(authors);
+            string companyValue = FirstNonEmpty(company);
+
+            if (string.IsNullOrWhiteSpace(authorValue))
+            {
+                return FirstNonEmpty(companyValue, "No disponible");
+            }
+
+            if (string.IsNullOrWhiteSpace(companyValue)
+                || string.Equals(authorValue, companyValue, StringComparison.OrdinalIgnoreCase))
+            {
+                return authorValue;
+            }
+
+            return $"{authorValue} / {companyValue}";
         }
 
         private static string FirstNonEmpty(params string?[] values)

@@ -7,12 +7,28 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageIcon>Resources\icon.ico</PackageIcon>
+    <Title>AutoWhatsApp</Title>
+    <Product>AutoWhatsApp</Product>
     <Authors>Kevin Pulido</Authors>
-    <Company>Kevin Pulido</Company>
-    <Description>Software diseñado para enviar mensajes de whatsapp tanto textos como audios.</Description>
+    <Company>Soka Technologies</Company>
+    <Description>Aplicación Windows Forms para programar envíos por WhatsApp Web desde archivos Excel, con soporte para mensajes de texto y conversión opcional a audio mediante ElevenLabs.</Description>
+    <Copyright>Copyright (c) 2026 Soka Technologies. Todos los derechos reservados.</Copyright>
+    <RepositoryUrl>https://github.com/kpulido93/Auto-Whatsapp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>whatsapp;whatsapp-web;excel;winforms;selenium;closedxml;elevenlabs</PackageTags>
     <ApplicationIcon>Resources\icon.ico</ApplicationIcon>
-    <Version>3.0.0.0</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+    <MinVerMinimumMajorMinor>3.0</MinVerMinimumMajorMinor>
+    <MinVerDefaultPreReleaseIdentifiers>dev.0</MinVerDefaultPreReleaseIdentifiers>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>Authors</_Parameter1>
+      <_Parameter2>$(Authors)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\icon.ico">
@@ -29,6 +45,7 @@
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="DotNetSeleniumExtras.WaitHelpers" Version="3.11.0" />
+    <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all" />
     <PackageReference Include="Selenium.WebDriver" Version="4.33.0" />
   </ItemGroup>
 
