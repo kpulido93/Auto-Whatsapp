@@ -12,6 +12,7 @@ namespace Automate_Whatsapp
         private List<WhatsAppLine> whatsAppLines = new();
         private HashSet<string> selectedLineIdsForRun = new(StringComparer.OrdinalIgnoreCase);
         private WhatsAppSendOrchestrator sendOrchestrator = null!;
+        private AutoWhatsAppSettings appSettings = AutoWhatsAppSettings.Default;
         private bool suppressLineSelectionChanged = false;
 
         private string excelPath = "";
@@ -58,6 +59,7 @@ namespace Automate_Whatsapp
         {
             InitializeComponent();
             ApplyApplicationIcon();
+            LoadAppSettings();
             LoadElevenLabsSettingsIntoUi();
             ApplyConfigurationVisibility();
             ApplyExcelPreviewVisibility();
@@ -86,6 +88,11 @@ namespace Automate_Whatsapp
             {
                 Icon = new Icon(iconPath);
             }
+        }
+
+        private void LoadAppSettings()
+        {
+            appSettings = AutoWhatsAppSettingsStore.LoadOrDefault();
         }
 
         private void chkShowExcelPreview_CheckedChanged(object sender, EventArgs e)
@@ -184,6 +191,19 @@ namespace Automate_Whatsapp
             RefreshWhatsAppLineMenu();
         }
 
+        private void configuracionGeneralToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            using var configurationDialog = new ConfigurationDialog(appSettings, Icon);
+            if (configurationDialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+
+            appSettings = configurationDialog.Settings.Normalize();
+            UpdateConfigurationSummary();
+            Log($"Configuración general guardada. Espera entre mensajes: {appSettings.DelayBetweenMessagesMinutes} min.");
+        }
+
         private void cambiarAutomaticamenteSiFallaToolStripMenuItem_Click(object sender, EventArgs e)
         {
             if (chkAutoLineFallback.Checked != cambiarAutomaticamenteSiFallaToolStripMenuItem.Checked)
@@ -220,6 +240,7 @@ namespace Automate_Whatsapp
         {
             seleccionarExcelToolStripMenuItem.Enabled = btnSelectFile.Enabled;
             descargarPlantillaExcelToolStripMenuItem.Enabled = btnDownloadTemplate.Enabled;
+            configuracionGeneralToolStripMenuItem.Enabled = true;
             lineaWhatsAppToolStripMenuItem.Enabled = true;
             cambiarAutomaticamenteSiFallaToolStripMenuItem.Enabled = chkAutoLineFallback.Enabled;
             cambiarAutomaticamenteSiFallaToolStripMenuItem.Checked = chkAutoLineFallback.Checked;
@@ -699,9 +720,10 @@ namespace Automate_Whatsapp
                 ? "ninguna"
                 : string.Join(", ", selectedLines.Select(line => line.DisplayName));
             string elevenLabsStatus = lblElevenLabsStatus?.Text ?? "No configurado";
+            string delayText = $"{appSettings.DelayBetweenMessagesMinutes} min";
 
             lblConfigurationSummary.Text =
-                $"Configuración: {selectedLineName} · Auto-fallback: {fallbackText} · Seleccionadas: {selectedLineNames} · ElevenLabs: {elevenLabsStatus}";
+                $"Configuración: {selectedLineName} · Auto-fallback: {fallbackText} · Seleccionadas: {selectedLineNames} · Espera entre mensajes: {delayText} · ElevenLabs: {elevenLabsStatus}";
         }
 
         private List<WhatsAppLine> GetSelectedLinesForRun()
@@ -1893,7 +1915,8 @@ namespace Automate_Whatsapp
                     SelectedWhatsAppLine,
                     chkAutoLineFallback.Checked,
                     InvalidPreviewRows,
-                    selectedLineIdsForRun.ToList()));
+                    SelectedLineIdsForRun: selectedLineIdsForRun.ToList(),
+                    DelayBetweenMessagesMinutes: appSettings.DelayBetweenMessagesMinutes));
 
             if (summary.StoppedByGlobalFailure)
             {

@@ -29,6 +29,7 @@ namespace Automate_Whatsapp
             archivoToolStripSeparator = new ToolStripSeparator();
             salirToolStripMenuItem = new ToolStripMenuItem();
             configuracionToolStripMenuItem = new ToolStripMenuItem();
+            configuracionGeneralToolStripMenuItem = new ToolStripMenuItem();
             lineaWhatsAppToolStripMenuItem = new ToolStripMenuItem();
             cambiarAutomaticamenteSiFallaToolStripMenuItem = new ToolStripMenuItem();
             seleccionarLineasToolStripMenuItem = new ToolStripMenuItem();
@@ -195,11 +196,18 @@ namespace Automate_Whatsapp
             //
             // configuracionToolStripMenuItem
             //
-            configuracionToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { lineaWhatsAppToolStripMenuItem, cambiarAutomaticamenteSiFallaToolStripMenuItem, seleccionarLineasToolStripMenuItem, elevenLabsToolStripMenuItem, configuracionToolStripSeparator, mostrarVistaPreviaExcelToolStripMenuItem });
+            configuracionToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { configuracionGeneralToolStripMenuItem, lineaWhatsAppToolStripMenuItem, cambiarAutomaticamenteSiFallaToolStripMenuItem, seleccionarLineasToolStripMenuItem, elevenLabsToolStripMenuItem, configuracionToolStripSeparator, mostrarVistaPreviaExcelToolStripMenuItem });
             configuracionToolStripMenuItem.Name = "configuracionToolStripMenuItem";
             configuracionToolStripMenuItem.Size = new Size(95, 20);
             configuracionToolStripMenuItem.Text = "&Configuración";
             configuracionToolStripMenuItem.DropDownOpening += configuracionToolStripMenuItem_DropDownOpening;
+            //
+            // configuracionGeneralToolStripMenuItem
+            //
+            configuracionGeneralToolStripMenuItem.Name = "configuracionGeneralToolStripMenuItem";
+            configuracionGeneralToolStripMenuItem.Size = new Size(226, 22);
+            configuracionGeneralToolStripMenuItem.Text = "Configuración general...";
+            configuracionGeneralToolStripMenuItem.Click += configuracionGeneralToolStripMenuItem_Click;
             //
             // lineaWhatsAppToolStripMenuItem
             //
@@ -1361,6 +1369,7 @@ namespace Automate_Whatsapp
         private System.Windows.Forms.ToolStripSeparator archivoToolStripSeparator;
         private System.Windows.Forms.ToolStripMenuItem salirToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem configuracionToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem configuracionGeneralToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem lineaWhatsAppToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem cambiarAutomaticamenteSiFallaToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem seleccionarLineasToolStripMenuItem;
