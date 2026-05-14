@@ -4,4 +4,5 @@ public sealed record WhatsAppSendOptions(
     WhatsAppLine? SelectedLine,
     bool AutoFallbackEnabled,
     int SkippedCount,
-    IReadOnlyCollection<string>? SelectedLineIdsForRun = null);
+    IReadOnlyCollection<string>? SelectedLineIdsForRun = null,
+    int DelayBetweenMessagesMinutes = 0);

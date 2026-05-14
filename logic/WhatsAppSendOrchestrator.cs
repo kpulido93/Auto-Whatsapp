@@ -2,8 +2,12 @@ namespace Automate_Whatsapp.Logic;
 
 public sealed class WhatsAppSendOrchestrator
 {
+    private static readonly TimeSpan PausePollInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan InterMessageDelayPollInterval = TimeSpan.FromSeconds(1);
+
     private readonly Func<WhatsAppLine, IWhatsAppSender> senderFactory;
     private readonly Func<ElevenLabsTts> ttsFactory;
+    private readonly Func<TimeSpan, Task> delayAsync;
 
     private List<WhatsAppLine> whatsAppLines;
     private IWhatsAppSender? whatsSender;
@@ -15,11 +19,13 @@ public sealed class WhatsAppSendOrchestrator
     public WhatsAppSendOrchestrator(
         IEnumerable<WhatsAppLine> whatsAppLines,
         Func<WhatsAppLine, IWhatsAppSender>? senderFactory = null,
-        Func<ElevenLabsTts>? ttsFactory = null)
+        Func<ElevenLabsTts>? ttsFactory = null,
+        Func<TimeSpan, Task>? delayAsync = null)
     {
         this.whatsAppLines = whatsAppLines.ToList();
         this.senderFactory = senderFactory ?? (line => new WhatsAppSender(line, EmitLog));
         this.ttsFactory = ttsFactory ?? (() => new ElevenLabsTts(EmitLog));
+        this.delayAsync = delayAsync ?? (delay => Task.Delay(delay));
     }
 
     public event Action<string>? Log;
@@ -413,8 +419,10 @@ public sealed class WhatsAppSendOrchestrator
 
         try
         {
-            foreach (var messageItem in messages)
+            for (int messageIndex = 0; messageIndex < messages.Count; messageIndex++)
             {
+                var messageItem = messages[messageIndex];
+
                 if (isCancellationRequested)
                 {
                     cancelledByUser = true;
@@ -424,7 +432,7 @@ public sealed class WhatsAppSendOrchestrator
 
                 while (isPaused)
                 {
-                    await Task.Delay(500);
+                    await delayAsync(PausePollInterval);
                     if (isCancellationRequested)
                     {
                         cancelledByUser = true;
@@ -511,7 +519,18 @@ public sealed class WhatsAppSendOrchestrator
                     break;
                 }
 
-                await Task.Delay(2000);
+                if (isCancellationRequested)
+                {
+                    cancelledByUser = true;
+                    break;
+                }
+
+                if (messageIndex < messages.Count - 1
+                    && !await WaitBetweenMessagesAsync(options.DelayBetweenMessagesMinutes))
+                {
+                    cancelledByUser = true;
+                    break;
+                }
             }
         }
         catch (Exception ex)
@@ -547,6 +566,54 @@ public sealed class WhatsAppSendOrchestrator
             ? WhatsAppSendOrchestrationState.Cancelled
             : WhatsAppSendOrchestrationState.Finished);
         return summary;
+    }
+
+    private async Task<bool> WaitBetweenMessagesAsync(int delayMinutes)
+    {
+        if (delayMinutes <= 0)
+        {
+            return true;
+        }
+
+        EmitLog($"Esperando {delayMinutes} minuto(s) antes del siguiente mensaje...");
+
+        var remainingDelay = TimeSpan.FromMinutes(delayMinutes);
+        while (remainingDelay > TimeSpan.Zero)
+        {
+            if (isCancellationRequested)
+            {
+                EmitLog("Espera entre mensajes cancelada.");
+                return false;
+            }
+
+            while (isPaused)
+            {
+                await delayAsync(PausePollInterval);
+                if (isCancellationRequested)
+                {
+                    EmitLog("Espera entre mensajes cancelada.");
+                    return false;
+                }
+            }
+
+            var delayStep = remainingDelay < InterMessageDelayPollInterval
+                ? remainingDelay
+                : InterMessageDelayPollInterval;
+
+            await delayAsync(delayStep);
+            if (isCancellationRequested)
+            {
+                EmitLog("Espera entre mensajes cancelada.");
+                return false;
+            }
+
+            if (!isPaused)
+            {
+                remainingDelay -= delayStep;
+            }
+        }
+
+        return true;
     }
 
     private static WhatsAppSendResult? ValidateGeneratedAudioFile(
