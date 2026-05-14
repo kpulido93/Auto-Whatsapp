@@ -723,7 +723,7 @@ namespace Automate_Whatsapp
             string delayText = $"{appSettings.DelayBetweenMessagesMinutes} min";
 
             lblConfigurationSummary.Text =
-                $"Configuración: {selectedLineName} · Auto-fallback: {fallbackText} · Seleccionadas: {selectedLineNames} · Espera entre mensajes: {delayText} · ElevenLabs: {elevenLabsStatus}";
+                $"Configuración: {selectedLineName} · Auto-fallback: {fallbackText} · Seleccionadas: {selectedLineNames} · Espera: {delayText} · ElevenLabs: {elevenLabsStatus}";
         }
 
         private List<WhatsAppLine> GetSelectedLinesForRun()
@@ -1907,8 +1907,17 @@ namespace Automate_Whatsapp
             txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
         }
 
+        private static string FormatDelayBetweenMessagesLog(int delayMinutes)
+        {
+            return delayMinutes <= 0
+                ? "Tiempo de espera entre mensajes: sin espera adicional."
+                : $"Tiempo de espera entre mensajes: {delayMinutes} minuto(s).";
+        }
+
         private async Task RunSendAsync(List<OutboundMessage> mensajes)
         {
+            Log(FormatDelayBetweenMessagesLog(appSettings.DelayBetweenMessagesMinutes));
+
             var summary = await sendOrchestrator.SendAsync(
                 mensajes,
                 new WhatsAppSendOptions(

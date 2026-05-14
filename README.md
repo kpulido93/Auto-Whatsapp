@@ -33,6 +33,14 @@ dotnet run --project .\AutoWhatsApp.csproj
 
 La primera ejecucion abre WhatsApp Web. Escanea el QR con el telefono asociado antes de programar envios.
 
+## Configuracion general de envio
+
+Desde **Configuración > Configuración general...** puedes definir la espera entre mensajes en minutos. El valor permitido va de 0 a 120 minutos.
+
+- `0` significa enviar el siguiente mensaje sin espera adicional.
+- La espera se aplica entre mensajes: no espera antes del primero ni despues del ultimo.
+- Durante la espera, los controles de pausa, reanudacion y cancelacion siguen funcionando.
+
 ## Plantilla Excel
 
 Desde la aplicacion, usa el boton **Descargar plantilla** en la seccion **1. Archivo Excel**. La app pedira donde guardar `plantilla_auto_whatsapp.xlsx` y generara el archivo localmente.
