@@ -4,6 +4,7 @@ public enum WhatsAppHealthStatus
 {
     Ready,
     InvalidDestinationNumber,
+    ChatOpenFailed,
     LoginRequired,
     PhoneDisconnected,
     SenderAccountBlockedOrRestricted,

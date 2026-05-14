@@ -10,10 +10,15 @@ namespace Automate_Whatsapp
     public partial class Form1 : Form
     {
         private List<WhatsAppLine> whatsAppLines = new();
+        private string? selectedWhatsAppLineId;
+        private bool autoFallbackEnabled;
         private HashSet<string> selectedLineIdsForRun = new(StringComparer.OrdinalIgnoreCase);
         private WhatsAppSendOrchestrator sendOrchestrator = null!;
         private AutoWhatsAppSettings appSettings = AutoWhatsAppSettings.Default;
-        private bool suppressLineSelectionChanged = false;
+        private ElevenLabsSettings elevenLabsSettings = ElevenLabsSettings.FromEnvironment();
+        private string elevenLabsStatusText = "No configurado";
+        private Color elevenLabsStatusColor = Color.FromArgb(75, 85, 99);
+        private string elevenLabsStatusToolTip = "";
 
         private string excelPath = "";
         private List<ExcelMessagePreviewRow> excelPreviewRows = new();
@@ -26,7 +31,6 @@ namespace Automate_Whatsapp
         private bool cancellationRequested = false;
         private bool isPreparingLines = false;
         private bool isLoadingExcelPreview = false;
-        private bool isConfigurationExpanded = false;
         private int excelPreviewLoadVersion = 0;
 
         private const string StatusNoFile = "Sin archivo";
@@ -36,14 +40,11 @@ namespace Automate_Whatsapp
         private const string StatusPaused = "Pausado";
         private const string StatusCancelled = "Cancelado";
         private const string StatusFinished = "Finalizado";
-        private const int ConfigurationRowIndex = 0;
         private const int ExcelPreviewRowIndex = 2;
         private const int ResponsiveLayoutPadding = 8;
         private const int ResponsiveLayoutMinimumWidth = 700;
         private const int ResponsiveLayoutMinimumHeightWithoutPreview = 560;
         private const int ResponsiveLayoutMinimumHeightWithPreview = 740;
-        private const float ConfigurationCollapsedHeight = 0F;
-        private const float ConfigurationExpandedHeight = 420F;
         private const float ExcelPreviewCollapsedHeight = 0F;
         private const float ExcelPreviewExpandedHeight = 184F;
         private const string ApplicationIconResourceName = "Resources.icon.ico";
@@ -58,10 +59,10 @@ namespace Automate_Whatsapp
         public Form1()
         {
             InitializeComponent();
+            InitializeConfigurationStateFromUi();
             ApplyApplicationIcon();
             LoadAppSettings();
             LoadElevenLabsSettingsIntoUi();
-            ApplyConfigurationVisibility();
             ApplyExcelPreviewVisibility();
             AdjustResponsiveLayout();
             InitializeScheduleControls();
@@ -95,44 +96,15 @@ namespace Automate_Whatsapp
             appSettings = AutoWhatsAppSettingsStore.LoadOrDefault();
         }
 
+        private void InitializeConfigurationStateFromUi()
+        {
+            autoFallbackEnabled = false;
+        }
+
         private void chkShowExcelPreview_CheckedChanged(object sender, EventArgs e)
         {
             mostrarVistaPreviaExcelToolStripMenuItem.Checked = chkShowExcelPreview.Checked;
             ApplyExcelPreviewVisibility();
-        }
-
-        private void btnToggleConfiguration_Click(object sender, EventArgs e)
-        {
-            isConfigurationExpanded = !isConfigurationExpanded;
-            ApplyConfigurationVisibility();
-        }
-
-        private void chkAutoLineFallback_CheckedChanged(object sender, EventArgs e)
-        {
-            cambiarAutomaticamenteSiFallaToolStripMenuItem.Checked = chkAutoLineFallback.Checked;
-            UpdateConfigurationSummary();
-            UpdateMenuState();
-        }
-
-        private void ApplyConfigurationVisibility()
-        {
-            mainLayout.SuspendLayout();
-            try
-            {
-                configurationContentLayout.Visible = isConfigurationExpanded;
-                grpConfiguration.Visible = isConfigurationExpanded;
-                mainLayout.RowStyles[ConfigurationRowIndex].Height = isConfigurationExpanded
-                    ? ConfigurationExpandedHeight
-                    : ConfigurationCollapsedHeight;
-                btnToggleConfiguration.Text = isConfigurationExpanded ? "Ocultar" : "Mostrar";
-            }
-            finally
-            {
-                mainLayout.ResumeLayout(true);
-            }
-
-            UpdateConfigurationSummary();
-            AdjustResponsiveLayout();
         }
 
         private void ApplyExcelPreviewVisibility()
@@ -183,43 +155,40 @@ namespace Automate_Whatsapp
         private void configuracionToolStripMenuItem_DropDownOpening(object sender, EventArgs e)
         {
             UpdateMenuState();
-            RefreshWhatsAppLineMenu();
-        }
-
-        private void lineaWhatsAppToolStripMenuItem_DropDownOpening(object sender, EventArgs e)
-        {
-            RefreshWhatsAppLineMenu();
         }
 
         private void configuracionGeneralToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            using var configurationDialog = new ConfigurationDialog(appSettings, Icon);
+            using var configurationDialog = new ConfigurationDialog(
+                appSettings,
+                CreateConfigurationState(),
+                whatsAppLines,
+                Icon,
+                CanEditConfiguration,
+                CanSelectRunLines,
+                CanConfigureLines,
+                CanPrepareSelectedLine,
+                CanPrepareAnyLine,
+                CanEditConfiguration,
+                CreateElevenLabsDialogState(),
+                new ConfigurationDialogActions(
+                    ConfigureLinesFromConfigurationDialog,
+                    PrepareLineFromConfigurationDialog,
+                    PrepareAllLinesFromConfigurationDialog,
+                    SaveElevenLabsSettingsFromConfigurationDialog,
+                    TestElevenLabsSettingsFromConfigurationDialog));
+
             if (configurationDialog.ShowDialog(this) != DialogResult.OK)
             {
+                LoadElevenLabsSettingsIntoUi();
                 return;
             }
 
             appSettings = configurationDialog.Settings.Normalize();
+            ApplyConfigurationState(configurationDialog.ConfigurationState);
+            LoadElevenLabsSettingsIntoUi();
             UpdateConfigurationSummary();
             Log($"Configuración general guardada. Espera entre mensajes: {appSettings.DelayBetweenMessagesMinutes} min.");
-        }
-
-        private void cambiarAutomaticamenteSiFallaToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            if (chkAutoLineFallback.Checked != cambiarAutomaticamenteSiFallaToolStripMenuItem.Checked)
-            {
-                chkAutoLineFallback.Checked = cambiarAutomaticamenteSiFallaToolStripMenuItem.Checked;
-            }
-        }
-
-        private void seleccionarLineasToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            btnSelectRunLines_Click(sender, e);
-        }
-
-        private void elevenLabsToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            ShowElevenLabsConfiguration();
         }
 
         private void mostrarVistaPreviaExcelToolStripMenuItem_Click(object sender, EventArgs e)
@@ -241,94 +210,13 @@ namespace Automate_Whatsapp
             seleccionarExcelToolStripMenuItem.Enabled = btnSelectFile.Enabled;
             descargarPlantillaExcelToolStripMenuItem.Enabled = btnDownloadTemplate.Enabled;
             configuracionGeneralToolStripMenuItem.Enabled = true;
-            lineaWhatsAppToolStripMenuItem.Enabled = true;
-            cambiarAutomaticamenteSiFallaToolStripMenuItem.Enabled = chkAutoLineFallback.Enabled;
-            cambiarAutomaticamenteSiFallaToolStripMenuItem.Checked = chkAutoLineFallback.Checked;
-            seleccionarLineasToolStripMenuItem.Enabled = btnSelectRunLines.Enabled;
-            elevenLabsToolStripMenuItem.Enabled = btnTestElevenLabsSettings.Enabled;
             mostrarVistaPreviaExcelToolStripMenuItem.Enabled = chkShowExcelPreview.Enabled;
             mostrarVistaPreviaExcelToolStripMenuItem.Checked = chkShowExcelPreview.Checked;
         }
 
-        private void RefreshWhatsAppLineMenu()
-        {
-            while (lineaWhatsAppToolStripMenuItem.DropDownItems.Count > 0)
-            {
-                var item = lineaWhatsAppToolStripMenuItem.DropDownItems[0];
-                lineaWhatsAppToolStripMenuItem.DropDownItems.RemoveAt(0);
-                item.Dispose();
-            }
-
-            var configureLinesItem = new ToolStripMenuItem("Configurar líneas...")
-            {
-                Enabled = btnConfigureLines.Enabled
-            };
-            configureLinesItem.Click += (_, args) => btnConfigureLines_Click(configureLinesItem, args);
-            lineaWhatsAppToolStripMenuItem.DropDownItems.Add(configureLinesItem);
-            lineaWhatsAppToolStripMenuItem.DropDownItems.Add(new ToolStripSeparator());
-
-            if (whatsAppLines.Count == 0)
-            {
-                lineaWhatsAppToolStripMenuItem.DropDownItems.Add(new ToolStripMenuItem("Sin verificar")
-                {
-                    Enabled = false
-                });
-                return;
-            }
-
-            string? selectedLineId = SelectedWhatsAppLine?.Id;
-            foreach (var line in whatsAppLines)
-            {
-                var lineMenuItem = new ToolStripMenuItem(line.DisplayNameWithState)
-                {
-                    Checked = string.Equals(line.Id, selectedLineId, StringComparison.OrdinalIgnoreCase),
-                    Enabled = cmbWhatsAppLine.Enabled,
-                    Tag = line
-                };
-
-                lineMenuItem.Click += whatsappLineToolStripMenuItem_Click;
-                lineaWhatsAppToolStripMenuItem.DropDownItems.Add(lineMenuItem);
-            }
-
-            lineaWhatsAppToolStripMenuItem.DropDownItems.Add(new ToolStripSeparator());
-            var prepareLineItem = new ToolStripMenuItem("Preparar línea seleccionada")
-            {
-                Enabled = btnPrepareLine.Enabled
-            };
-            prepareLineItem.Click += (_, args) => btnPrepareLine_Click(prepareLineItem, args);
-            lineaWhatsAppToolStripMenuItem.DropDownItems.Add(prepareLineItem);
-
-            var prepareAllLinesItem = new ToolStripMenuItem("Preparar todas las líneas")
-            {
-                Enabled = btnPrepareAllLines.Enabled
-            };
-            prepareAllLinesItem.Click += (_, args) => btnPrepareAllLines_Click(prepareAllLinesItem, args);
-            lineaWhatsAppToolStripMenuItem.DropDownItems.Add(prepareAllLinesItem);
-        }
-
-        private void whatsappLineToolStripMenuItem_Click(object? sender, EventArgs e)
-        {
-            if (sender is not ToolStripMenuItem { Tag: WhatsAppLine line } || !cmbWhatsAppLine.Enabled)
-            {
-                return;
-            }
-
-            var matchingLine = whatsAppLines.FirstOrDefault(item =>
-                string.Equals(item.Id, line.Id, StringComparison.OrdinalIgnoreCase));
-
-            if (matchingLine == null)
-            {
-                return;
-            }
-
-            cmbWhatsAppLine.SelectedItem = matchingLine;
-            RefreshWhatsAppLineMenu();
-            UpdateMenuState();
-        }
-
         private void LoadWhatsAppLines(string? selectedLineId = null)
         {
-            string? selectionToRestore = selectedLineId ?? SelectedWhatsAppLine?.Id;
+            string? selectionToRestore = selectedLineId ?? selectedWhatsAppLineId ?? SelectedWhatsAppLine?.Id;
 
             try
             {
@@ -345,31 +233,8 @@ namespace Automate_Whatsapp
                     MessageBoxIcon.Warning);
             }
 
-            suppressLineSelectionChanged = true;
-            try
-            {
-                cmbWhatsAppLine.DisplayMember = nameof(WhatsAppLine.DisplayNameWithState);
-                cmbWhatsAppLine.ValueMember = nameof(WhatsAppLine.Id);
-                cmbWhatsAppLine.DataSource = whatsAppLines;
-
-                var matchingLine = !string.IsNullOrWhiteSpace(selectionToRestore)
-                    ? whatsAppLines.FirstOrDefault(line =>
-                        string.Equals(line.Id, selectionToRestore, StringComparison.OrdinalIgnoreCase))
-                    : null;
-
-                if (matchingLine != null)
-                {
-                    cmbWhatsAppLine.SelectedItem = matchingLine;
-                }
-                else if (whatsAppLines.Count > 0)
-                {
-                    cmbWhatsAppLine.SelectedIndex = 0;
-                }
-            }
-            finally
-            {
-                suppressLineSelectionChanged = false;
-            }
+            selectedWhatsAppLineId = ResolveWhatsAppLineById(selectionToRestore)?.Id
+                ?? whatsAppLines.FirstOrDefault()?.Id;
 
             if (sendOrchestrator != null)
             {
@@ -379,47 +244,37 @@ namespace Automate_Whatsapp
 
             ReconcileSelectedLinesForRun(includePrimary: true);
             UpdateSelectedLineStatus();
-            RefreshWhatsAppLineMenu();
             UpdateActionButtons();
             Log($"Líneas habilitadas cargadas: {whatsAppLines.Count}");
         }
 
-        private WhatsAppLine? SelectedWhatsAppLine => cmbWhatsAppLine.SelectedItem as WhatsAppLine;
+        private WhatsAppLine? SelectedWhatsAppLine =>
+            ResolveWhatsAppLineById(selectedWhatsAppLineId);
+
+        private WhatsAppLine? ResolveWhatsAppLineById(string? lineId)
+        {
+            if (string.IsNullOrWhiteSpace(lineId))
+            {
+                return null;
+            }
+
+            return whatsAppLines.FirstOrDefault(line =>
+                string.Equals(line.Id, lineId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void SetAutoFallbackEnabled(bool enabled)
+        {
+            autoFallbackEnabled = enabled;
+            UpdateConfigurationSummary();
+            UpdateMenuState();
+        }
 
         private void RefreshWhatsAppLineSelector(string? selectedLineId = null)
         {
-            string? selectedId = selectedLineId ?? SelectedWhatsAppLine?.Id;
-
-            suppressLineSelectionChanged = true;
-            try
-            {
-                cmbWhatsAppLine.DataSource = null;
-                cmbWhatsAppLine.DisplayMember = nameof(WhatsAppLine.DisplayNameWithState);
-                cmbWhatsAppLine.ValueMember = nameof(WhatsAppLine.Id);
-                cmbWhatsAppLine.DataSource = whatsAppLines;
-
-                if (!string.IsNullOrWhiteSpace(selectedId))
-                {
-                    var matchingLine = whatsAppLines.FirstOrDefault(line =>
-                        string.Equals(line.Id, selectedId, StringComparison.OrdinalIgnoreCase));
-
-                    if (matchingLine != null)
-                    {
-                        cmbWhatsAppLine.SelectedItem = matchingLine;
-                    }
-                }
-                else if (whatsAppLines.Count > 0)
-                {
-                    cmbWhatsAppLine.SelectedIndex = 0;
-                }
-            }
-            finally
-            {
-                suppressLineSelectionChanged = false;
-            }
-
+            string? selectedId = selectedLineId ?? selectedWhatsAppLineId ?? SelectedWhatsAppLine?.Id;
+            selectedWhatsAppLineId = ResolveWhatsAppLineById(selectedId)?.Id
+                ?? whatsAppLines.FirstOrDefault()?.Id;
             UpdateSelectedLineStatus();
-            RefreshWhatsAppLineMenu();
             UpdateMenuState();
         }
 
@@ -443,23 +298,6 @@ namespace Automate_Whatsapp
 
         private void UpdateSelectedLineStatus()
         {
-            var selectedLine = SelectedWhatsAppLine;
-            if (selectedLine == null)
-            {
-                lblLinePreparationStatus.Text = "Estado línea: sin línea";
-                lblLinePreparationStatus.ForeColor = Color.FromArgb(75, 85, 99);
-                UpdateConfigurationSummary();
-                return;
-            }
-
-            lblLinePreparationStatus.Text = $"Estado línea: {selectedLine.OperationalStateText}";
-            lblLinePreparationStatus.ForeColor = selectedLine.OperationalState switch
-            {
-                WhatsAppLineOperationalState.Ready => Color.FromArgb(21, 128, 61),
-                WhatsAppLineOperationalState.RequiresManualAuth => Color.FromArgb(180, 83, 9),
-                WhatsAppLineOperationalState.NotAvailable => Color.FromArgb(185, 28, 28),
-                _ => Color.FromArgb(75, 85, 99)
-            };
             UpdateConfigurationSummary();
         }
 
@@ -472,9 +310,10 @@ namespace Automate_Whatsapp
 
             selectedLineIdsForRun.RemoveWhere(lineId => !enabledLineIds.Contains(lineId));
 
-            if (includePrimary && SelectedWhatsAppLine != null)
+            var selectedLine = SelectedWhatsAppLine;
+            if (includePrimary && selectedLine != null)
             {
-                selectedLineIdsForRun.Add(SelectedWhatsAppLine.Id);
+                selectedLineIdsForRun.Add(selectedLine.Id);
             }
 
             UpdateRunLinesSummary();
@@ -482,18 +321,6 @@ namespace Automate_Whatsapp
 
         private void UpdateRunLinesSummary()
         {
-            var selectedLines = GetSelectedLinesForRun();
-
-            if (selectedLines.Count == 0)
-            {
-                lblRunLinesSummary.Text = "Líneas seleccionadas: ninguna";
-                lblRunLinesSummary.ForeColor = Color.FromArgb(185, 28, 28);
-                UpdateConfigurationSummary();
-                return;
-            }
-
-            lblRunLinesSummary.Text = $"Líneas seleccionadas: {string.Join(", ", selectedLines.Select(line => line.DisplayName))}";
-            lblRunLinesSummary.ForeColor = Color.FromArgb(75, 85, 99);
             UpdateConfigurationSummary();
         }
 
@@ -503,7 +330,6 @@ namespace Automate_Whatsapp
             {
                 bool loadedLocalSettings = ElevenLabsSettingsStore.TryLoad(out var settings);
                 ApplyElevenLabsSettingsToUi(settings);
-                uiToolTip.SetToolTip(txtElevenLabsApiKey, "La API key se muestra enmascarada y se guarda cifrada para el usuario actual.");
 
                 if (settings.Validate().Count == 0)
                 {
@@ -513,57 +339,94 @@ namespace Automate_Whatsapp
                     }
                     else
                     {
-                        lblElevenLabsStatus.Text = "Configurado por entorno";
-                        uiToolTip.SetToolTip(
-                            lblElevenLabsStatus,
+                        SetElevenLabsStatus(
+                            "Configurado por entorno",
+                            Color.FromArgb(21, 128, 61),
                             "Los envíos de audio usan variables de entorno porque no hay configuración local guardada."
                             + Environment.NewLine
                             + "Pulsa Guardar configuración o Probar configuración para guardar estos valores localmente."
                             + Environment.NewLine
                             + $"Ruta local: {ElevenLabsSettingsStore.GetConfigPath()}");
-                        UpdateConfigurationSummary();
                     }
                 }
             }
             catch (Exception ex)
             {
                 ApplyElevenLabsSettingsToUi(ElevenLabsSettings.FromEnvironment());
-                lblElevenLabsStatus.Text = "Error de validación";
-                lblElevenLabsStatus.ForeColor = Color.FromArgb(185, 28, 28);
-                uiToolTip.SetToolTip(lblElevenLabsStatus, ex.Message);
+                SetElevenLabsStatus(
+                    "Error de validación",
+                    Color.FromArgb(185, 28, 28),
+                    ex.Message);
                 Log($"No se pudo cargar la configuración local de ElevenLabs. Se usarán variables de entorno. Detalle: {ex.Message}");
             }
         }
 
-        private void ShowElevenLabsConfiguration()
-        {
-            if (!isConfigurationExpanded)
-            {
-                isConfigurationExpanded = true;
-                ApplyConfigurationVisibility();
-            }
-
-            BeginInvoke(new Action(() =>
-            {
-                mainScrollPanel.ScrollControlIntoView(grpElevenLabs);
-                txtElevenLabsApiKey.Focus();
-            }));
-        }
-
         private void ApplyElevenLabsSettingsToUi(ElevenLabsSettings settings)
         {
-            txtElevenLabsApiKey.Text = settings.ApiKey;
-            txtElevenLabsVoiceId.Text = settings.VoiceId;
-            txtElevenLabsModelId.Text = settings.ModelId;
-            txtElevenLabsOutputFormat.Text = settings.OutputFormat;
-            nudElevenLabsStability.Value = ToNumericRatio(settings.Stability, ElevenLabsSettings.DefaultStability);
-            nudElevenLabsSimilarityBoost.Value = ToNumericRatio(settings.SimilarityBoost, ElevenLabsSettings.DefaultSimilarityBoost);
+            elevenLabsSettings = settings;
             UpdateElevenLabsStatus(settings);
         }
 
-        private void btnSaveElevenLabsSettings_Click(object sender, EventArgs e)
+        private void SaveElevenLabsSettings(ElevenLabsSettings settings, string successLogMessage)
         {
-            if (!TryBuildElevenLabsSettingsFromUi(out var settings, out var validationErrors))
+            ElevenLabsSettingsStore.Save(settings);
+            elevenLabsSettings = settings;
+            MarkElevenLabsSavedLocally();
+            Log(successLogMessage);
+        }
+
+        private void MarkElevenLabsSavedLocally()
+        {
+            SetElevenLabsStatus(
+                "Configurado y guardado",
+                Color.FromArgb(21, 128, 61),
+                ElevenLabsSavedSettingsTooltip
+                + Environment.NewLine
+                + $"Ruta local: {ElevenLabsSettingsStore.GetConfigPath()}");
+        }
+
+        private void ReportElevenLabsSettingsSaveError(Exception ex)
+        {
+            SetElevenLabsStatus(
+                "Error al guardar",
+                Color.FromArgb(185, 28, 28),
+                ex.Message);
+            Log($"No se pudo guardar la configuración ElevenLabs: {ex.Message}");
+            MessageBox.Show(
+                "No se pudo guardar la configuración de ElevenLabs.",
+                "ElevenLabs",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+
+        private ElevenLabsSettings BuildElevenLabsSettingsFromUi()
+        {
+            return elevenLabsSettings;
+        }
+
+        private static bool TryValidateElevenLabsSettings(
+            ElevenLabsSettings settings,
+            out IReadOnlyList<string> validationErrors)
+        {
+            validationErrors = settings.Validate();
+            return validationErrors.Count == 0;
+        }
+
+        private ElevenLabsDialogState SaveElevenLabsSettingsFromConfigurationDialog(ElevenLabsSettings settings)
+        {
+            SaveElevenLabsSettingsFromInput(settings);
+            return CreateElevenLabsDialogState(settings);
+        }
+
+        private ElevenLabsDialogState TestElevenLabsSettingsFromConfigurationDialog(ElevenLabsSettings settings)
+        {
+            TestElevenLabsSettingsFromInput(settings);
+            return CreateElevenLabsDialogState(settings);
+        }
+
+        private void SaveElevenLabsSettingsFromInput(ElevenLabsSettings settings)
+        {
+            if (!TryValidateElevenLabsSettings(settings, out var validationErrors))
             {
                 UpdateElevenLabsStatus(settings, validationErrors);
                 Log("Configuración ElevenLabs no guardada: " + string.Join(" ", validationErrors));
@@ -575,81 +438,35 @@ namespace Automate_Whatsapp
                 return;
             }
 
-            try
-            {
-                SaveElevenLabsSettings(settings, "Configuración ElevenLabs guardada localmente. Los envíos de audio usarán estos valores.");
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
-            {
-                ReportElevenLabsSettingsSaveError(ex);
-            }
+            TrySaveElevenLabsSettings(
+                settings,
+                "Configuración ElevenLabs guardada localmente. Los envíos de audio usarán estos valores.");
         }
 
-        private void btnTestElevenLabsSettings_Click(object sender, EventArgs e)
+        private void TestElevenLabsSettingsFromInput(ElevenLabsSettings settings)
         {
-            if (!TryBuildElevenLabsSettingsFromUi(out var settings, out var validationErrors))
+            if (!TryValidateElevenLabsSettings(settings, out var validationErrors))
             {
                 UpdateElevenLabsStatus(settings, validationErrors);
                 Log("Prueba ElevenLabs fallida: " + string.Join(" ", validationErrors));
                 return;
             }
 
+            TrySaveElevenLabsSettings(
+                settings,
+                "Prueba ElevenLabs correcta: configuración mínima presente y guardada localmente. No se llamó a la API.");
+        }
+
+        private void TrySaveElevenLabsSettings(ElevenLabsSettings settings, string successLogMessage)
+        {
             try
             {
-                SaveElevenLabsSettings(settings, "Prueba ElevenLabs correcta: configuración mínima presente y guardada localmente. No se llamó a la API.");
+                SaveElevenLabsSettings(settings, successLogMessage);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
             {
                 ReportElevenLabsSettingsSaveError(ex);
             }
-        }
-
-        private void SaveElevenLabsSettings(ElevenLabsSettings settings, string successLogMessage)
-        {
-            ElevenLabsSettingsStore.Save(settings);
-            MarkElevenLabsSavedLocally();
-            Log(successLogMessage);
-        }
-
-        private void MarkElevenLabsSavedLocally()
-        {
-            lblElevenLabsStatus.Text = "Configurado y guardado";
-            lblElevenLabsStatus.ForeColor = Color.FromArgb(21, 128, 61);
-            uiToolTip.SetToolTip(
-                lblElevenLabsStatus,
-                ElevenLabsSavedSettingsTooltip
-                + Environment.NewLine
-                + $"Ruta local: {ElevenLabsSettingsStore.GetConfigPath()}");
-            UpdateConfigurationSummary();
-        }
-
-        private void ReportElevenLabsSettingsSaveError(Exception ex)
-        {
-            lblElevenLabsStatus.Text = "Error al guardar";
-            lblElevenLabsStatus.ForeColor = Color.FromArgb(185, 28, 28);
-            uiToolTip.SetToolTip(lblElevenLabsStatus, ex.Message);
-            Log($"No se pudo guardar la configuración ElevenLabs: {ex.Message}");
-            MessageBox.Show(
-                "No se pudo guardar la configuración de ElevenLabs.",
-                "ElevenLabs",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
-        }
-
-        private bool TryBuildElevenLabsSettingsFromUi(
-            out ElevenLabsSettings settings,
-            out IReadOnlyList<string> validationErrors)
-        {
-            settings = new ElevenLabsSettings(
-                txtElevenLabsApiKey.Text,
-                txtElevenLabsVoiceId.Text,
-                txtElevenLabsModelId.Text,
-                txtElevenLabsOutputFormat.Text,
-                (double)nudElevenLabsStability.Value,
-                (double)nudElevenLabsSimilarityBoost.Value);
-
-            validationErrors = settings.Validate();
-            return validationErrors.Count == 0;
         }
 
         private void UpdateElevenLabsStatus(
@@ -660,79 +477,187 @@ namespace Automate_Whatsapp
 
             if (validationErrors.Count == 0)
             {
-                lblElevenLabsStatus.Text = "Configurado";
-                lblElevenLabsStatus.ForeColor = Color.FromArgb(21, 128, 61);
-                uiToolTip.SetToolTip(
-                    lblElevenLabsStatus,
+                SetElevenLabsStatus(
+                    "Configurado",
+                    Color.FromArgb(21, 128, 61),
                     "Configuración ElevenLabs válida. Pulsa Guardar configuración o Probar configuración para guardarla localmente antes de enviar audios."
                     + Environment.NewLine
                     + $"Ruta local: {ElevenLabsSettingsStore.GetConfigPath()}");
             }
             else if (string.IsNullOrWhiteSpace(settings.ApiKey) || string.IsNullOrWhiteSpace(settings.VoiceId))
             {
-                lblElevenLabsStatus.Text = "No configurado";
-                lblElevenLabsStatus.ForeColor = Color.FromArgb(180, 83, 9);
-                uiToolTip.SetToolTip(lblElevenLabsStatus, string.Join(Environment.NewLine, validationErrors));
+                SetElevenLabsStatus(
+                    "No configurado",
+                    Color.FromArgb(180, 83, 9),
+                    string.Join(Environment.NewLine, validationErrors));
             }
             else
             {
-                lblElevenLabsStatus.Text = "Error de validación";
-                lblElevenLabsStatus.ForeColor = Color.FromArgb(185, 28, 28);
-                uiToolTip.SetToolTip(lblElevenLabsStatus, string.Join(Environment.NewLine, validationErrors));
+                SetElevenLabsStatus(
+                    "Error de validación",
+                    Color.FromArgb(185, 28, 28),
+                    string.Join(Environment.NewLine, validationErrors));
             }
+        }
 
+        private void SetElevenLabsStatus(string statusText, Color foreColor, string toolTipText)
+        {
+            elevenLabsStatusText = statusText;
+            elevenLabsStatusColor = foreColor;
+            elevenLabsStatusToolTip = toolTipText;
             UpdateConfigurationSummary();
         }
 
-        private void SetElevenLabsControlsEnabled(bool enabled)
+        private ElevenLabsDialogState CreateElevenLabsDialogState(ElevenLabsSettings? settings = null)
         {
-            txtElevenLabsApiKey.Enabled = enabled;
-            txtElevenLabsVoiceId.Enabled = enabled;
-            txtElevenLabsModelId.Enabled = enabled;
-            txtElevenLabsOutputFormat.Enabled = enabled;
-            nudElevenLabsStability.Enabled = enabled;
-            nudElevenLabsSimilarityBoost.Enabled = enabled;
-            btnSaveElevenLabsSettings.Enabled = enabled;
-            btnTestElevenLabsSettings.Enabled = enabled;
-        }
-
-        private static decimal ToNumericRatio(double value, double defaultValue)
-        {
-            if (double.IsNaN(value) || value < 0 || value > 1)
-            {
-                value = defaultValue;
-            }
-
-            return Math.Round((decimal)value, 2, MidpointRounding.AwayFromZero);
+            return new ElevenLabsDialogState(
+                settings ?? BuildElevenLabsSettingsFromUi(),
+                elevenLabsStatusText,
+                elevenLabsStatusColor,
+                elevenLabsStatusToolTip);
         }
 
         private void UpdateConfigurationSummary()
         {
-            if (lblConfigurationSummary == null || chkAutoLineFallback == null)
+            if (lblConfigurationSummary == null)
             {
                 return;
             }
 
-            string selectedLineName = SelectedWhatsAppLine?.DisplayName ?? "sin línea";
-            string fallbackText = chkAutoLineFallback.Checked ? "Sí" : "No";
-            var selectedLines = GetSelectedLinesForRun();
-            string selectedLineNames = selectedLines.Count == 0
-                ? "ninguna"
-                : string.Join(", ", selectedLines.Select(line => line.DisplayName));
-            string elevenLabsStatus = lblElevenLabsStatus?.Text ?? "No configurado";
-            string delayText = $"{appSettings.DelayBetweenMessagesMinutes} min";
+            var configurationState = CreateConfigurationState();
+            string selectedLineName = ResolveWhatsAppLineById(configurationState.SelectedWhatsAppLineId)?.DisplayName ?? "sin línea";
+            string delayText = $"{configurationState.DelayBetweenMessagesMinutes} min";
 
             lblConfigurationSummary.Text =
-                $"Configuración: {selectedLineName} · Auto-fallback: {fallbackText} · Seleccionadas: {selectedLineNames} · Espera: {delayText} · ElevenLabs: {elevenLabsStatus}";
+                $"Configuración: {selectedLineName} · Espera: {delayText} · ElevenLabs: {configurationState.ElevenLabsStatusText}";
         }
 
         private List<WhatsAppLine> GetSelectedLinesForRun()
+            => GetSelectedLinesForRun(selectedLineIdsForRun);
+
+        private List<WhatsAppLine> GetSelectedLinesForRun(IEnumerable<string> selectedLineIds)
         {
+            var selectedIds = selectedLineIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             return whatsAppLines
-                .Where(line => line.Enabled && selectedLineIdsForRun.Contains(line.Id))
+                .Where(line => line.Enabled && selectedIds.Contains(line.Id))
                 .OrderBy(line => line.Priority)
                 .ThenBy(line => line.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        private bool OperationBlockingSetup => isScheduled || isSending || isPreparingLines;
+
+        private bool CanEditConfiguration => !OperationBlockingSetup;
+
+        private bool CanSelectRunLines => whatsAppLines.Count > 0 && !OperationBlockingSetup;
+
+        private bool CanConfigureLines => !OperationBlockingSetup;
+
+        private bool CanPrepareSelectedLine => SelectedWhatsAppLine != null && !OperationBlockingSetup;
+
+        private bool CanPrepareAnyLine => whatsAppLines.Count > 0 && !OperationBlockingSetup;
+
+        private AppConfigurationState CreateConfigurationState()
+            => new(
+                selectedWhatsAppLineId,
+                autoFallbackEnabled,
+                selectedLineIdsForRun.ToList(),
+                appSettings.DelayBetweenMessagesMinutes,
+                elevenLabsStatusText);
+
+        private void ApplyConfigurationState(AppConfigurationState configurationState)
+        {
+            selectedWhatsAppLineId = configurationState.SelectedWhatsAppLineId;
+            selectedLineIdsForRun = new HashSet<string>(
+                configurationState.SelectedLineIdsForRun,
+                StringComparer.OrdinalIgnoreCase);
+            elevenLabsStatusText = configurationState.ElevenLabsStatusText;
+
+            SetAutoFallbackEnabled(configurationState.AutoFallbackEnabled);
+            RefreshWhatsAppLineSelector(selectedWhatsAppLineId);
+            sendOrchestrator.SetSelectedLine(SelectedWhatsAppLine);
+            ReconcileSelectedLinesForRun(includePrimary: true);
+            UpdateSelectedLineStatus();
+            UpdateRunLinesSummary();
+            UpdateMenuState();
+        }
+
+        private bool ConfigureLinesWithFeedback(IWin32Window owner, string? selectedLineId)
+        {
+            if (isScheduled || isSending || isPreparingLines)
+            {
+                MessageBox.Show(
+                    "No se pueden modificar las líneas mientras hay una programación, envío o preparación en curso.",
+                    "Configurar líneas",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return false;
+            }
+
+            using var settingsForm = new LineSettingsForm();
+
+            if (settingsForm.ShowDialog(owner) != DialogResult.OK)
+            {
+                return false;
+            }
+
+            LoadWhatsAppLines(selectedLineId);
+            return true;
+        }
+
+        private IReadOnlyList<WhatsAppLine>? ConfigureLinesFromConfigurationDialog(
+            IWin32Window owner,
+            string? dialogSelectedLineId)
+        {
+            string? currentSelectedLineId = selectedWhatsAppLineId;
+            var currentSelectedRunLineIds = selectedLineIdsForRun.ToList();
+
+            if (!ConfigureLinesWithFeedback(owner, currentSelectedLineId))
+            {
+                return null;
+            }
+
+            selectedLineIdsForRun = new HashSet<string>(currentSelectedRunLineIds, StringComparer.OrdinalIgnoreCase);
+            ReconcileSelectedLinesForRun(includePrimary: true);
+            return whatsAppLines;
+        }
+
+        private IReadOnlyList<WhatsAppLine> PrepareLineFromConfigurationDialog(string selectedLineId)
+        {
+            string? currentSelectedLineId = selectedWhatsAppLineId;
+            var currentSelectedRunLineIds = selectedLineIdsForRun.ToList();
+            var selectedLine = ResolveWhatsAppLineById(selectedLineId);
+            if (selectedLine == null)
+            {
+                MessageBox.Show("Selecciona una línea para preparar.", "Preparar línea", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return whatsAppLines;
+            }
+
+            PrepareSingleLineWithFeedback(selectedLine);
+            RestoreConfigurationSelection(currentSelectedLineId, currentSelectedRunLineIds);
+            return whatsAppLines;
+        }
+
+        private IReadOnlyList<WhatsAppLine> PrepareAllLinesFromConfigurationDialog()
+        {
+            string? currentSelectedLineId = selectedWhatsAppLineId;
+            var currentSelectedRunLineIds = selectedLineIdsForRun.ToList();
+            PrepareAllEnabledLinesWithFeedback();
+            RestoreConfigurationSelection(currentSelectedLineId, currentSelectedRunLineIds);
+            return whatsAppLines;
+        }
+
+        private void RestoreConfigurationSelection(string? selectedLineId, IReadOnlyCollection<string> runLineIds)
+        {
+            selectedWhatsAppLineId = selectedLineId;
+            selectedLineIdsForRun = new HashSet<string>(runLineIds, StringComparer.OrdinalIgnoreCase);
+            RefreshWhatsAppLineSelector(selectedWhatsAppLineId);
+            sendOrchestrator.SetSelectedLine(SelectedWhatsAppLine);
+            ReconcileSelectedLinesForRun(includePrimary: true);
+            UpdateSelectedLineStatus();
+            UpdateRunLinesSummary();
+            UpdateMenuState();
         }
 
         private void InitializeSendOrchestrator()
@@ -795,10 +720,6 @@ namespace Automate_Whatsapp
             int minimumHeight = chkShowExcelPreview?.Checked == true
                 ? ResponsiveLayoutMinimumHeightWithPreview
                 : ResponsiveLayoutMinimumHeightWithoutPreview;
-            if (isConfigurationExpanded)
-            {
-                minimumHeight += (int)(ConfigurationExpandedHeight - ConfigurationCollapsedHeight);
-            }
 
             mainLayout.Location = new Point(ResponsiveLayoutPadding, ResponsiveLayoutPadding);
             mainLayout.Size = new Size(
@@ -851,8 +772,6 @@ namespace Automate_Whatsapp
                     schedulerTimer.Stop();
                     isPaused = false;
                     cancellationRequested = false;
-                    cmbWhatsAppLine.Enabled = false;
-                    chkAutoLineFallback.Enabled = false;
                     btnPauseResume.Text = "Pausar";
                     SetGeneralStatus(StatusSending);
                     break;
@@ -868,8 +787,6 @@ namespace Automate_Whatsapp
                     isScheduled = false;
                     isPaused = false;
                     cancellationRequested = cancellationStillStopping;
-                    cmbWhatsAppLine.Enabled = !cancellationStillStopping;
-                    chkAutoLineFallback.Enabled = !cancellationStillStopping;
                     btnPauseResume.Text = "Pausar";
                     SetGeneralStatus(StatusCancelled);
                     break;
@@ -878,8 +795,6 @@ namespace Automate_Whatsapp
                     isScheduled = false;
                     isPaused = false;
                     cancellationRequested = false;
-                    cmbWhatsAppLine.Enabled = true;
-                    chkAutoLineFallback.Enabled = true;
                     btnPauseResume.Text = "Pausar";
                     SetGeneralStatus(StatusFinished);
                     break;
@@ -893,55 +808,19 @@ namespace Automate_Whatsapp
             var matchingLine = whatsAppLines.FirstOrDefault(item =>
                 string.Equals(item.Id, line.Id, StringComparison.OrdinalIgnoreCase));
 
-            if (matchingLine == null || ReferenceEquals(cmbWhatsAppLine.SelectedItem, matchingLine))
+            if (matchingLine == null)
             {
                 return;
             }
 
-            suppressLineSelectionChanged = true;
-            try
-            {
-                cmbWhatsAppLine.SelectedItem = matchingLine;
-            }
-            finally
-            {
-                suppressLineSelectionChanged = false;
-            }
+            selectedWhatsAppLineId = matchingLine.Id;
 
             UpdateSelectedLineStatus();
-            RefreshWhatsAppLineMenu();
             UpdateMenuState();
         }
 
-        private void cmbWhatsAppLine_SelectedIndexChanged(object sender, EventArgs e)
+        private void PrepareSingleLineWithFeedback(WhatsAppLine selectedLine)
         {
-            if (suppressLineSelectionChanged)
-            {
-                return;
-            }
-
-            var selectedLine = SelectedWhatsAppLine;
-            if (selectedLine == null)
-            {
-                return;
-            }
-
-            sendOrchestrator.SetSelectedLine(selectedLine);
-            ReconcileSelectedLinesForRun(includePrimary: true);
-            UpdateSelectedLineStatus();
-            RefreshWhatsAppLineMenu();
-            UpdateMenuState();
-        }
-
-        private void btnPrepareLine_Click(object sender, EventArgs e)
-        {
-            var selectedLine = SelectedWhatsAppLine;
-            if (selectedLine == null)
-            {
-                MessageBox.Show("Selecciona una línea para preparar.", "Preparar línea", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
             isPreparingLines = true;
             UpdateActionButtons();
 
@@ -965,7 +844,7 @@ namespace Automate_Whatsapp
             }
         }
 
-        private void btnPrepareAllLines_Click(object sender, EventArgs e)
+        private void PrepareAllEnabledLinesWithFeedback()
         {
             var enabledLines = whatsAppLines
                 .Where(line => line.Enabled)
@@ -1390,24 +1269,16 @@ namespace Automate_Whatsapp
         private void UpdateActionButtons()
         {
             bool operationActive = (isScheduled || isSending) && !cancellationRequested;
-            bool operationBlockingSetup = isScheduled || isSending || isPreparingLines;
             bool canRequestSend = SendActionPolicy.CanRequestSend(
                 new SendActionButtonState(isSending, isScheduled, isPreparingLines));
 
             btnPauseResume.Enabled = operationActive;
             btnCancel.Enabled = operationActive;
-            btnPrepareLine.Enabled = SelectedWhatsAppLine != null && !operationBlockingSetup;
-            btnPrepareAllLines.Enabled = whatsAppLines.Count > 0 && !operationBlockingSetup;
-            btnSelectRunLines.Enabled = whatsAppLines.Count > 0 && !operationBlockingSetup;
-            btnConfigureLines.Enabled = !operationBlockingSetup;
             // Los botones de envío quedan disponibles aunque falten precondiciones;
             // las validaciones centralizadas explican el bloqueo con log y MessageBox.
             btnSend.Enabled = canRequestSend;
             btnSendNow.Enabled = canRequestSend;
-            btnChangeScheduleTime.Enabled = !operationBlockingSetup;
-            cmbWhatsAppLine.Enabled = !operationBlockingSetup;
-            chkAutoLineFallback.Enabled = !operationBlockingSetup;
-            SetElevenLabsControlsEnabled(!operationBlockingSetup);
+            btnChangeScheduleTime.Enabled = !OperationBlockingSetup;
             UpdateMenuState();
         }
 
@@ -1468,8 +1339,6 @@ namespace Automate_Whatsapp
                 cancellationRequested = false;
             }
             btnPauseResume.Text = "Pausar";
-            cmbWhatsAppLine.Enabled = true;
-            chkAutoLineFallback.Enabled = true;
             SetGeneralStatus(StatusCancelled);
             UpdateActionButtons();
             Log(wasSending ? "Envío cancelado." : "Programación cancelada.");
@@ -1519,159 +1388,6 @@ namespace Automate_Whatsapp
         private async void btnSendNow_Click(object sender, EventArgs e)
         {
             await StartSendAsync(SendStartTrigger.ImmediateClick);
-        }
-
-        private void btnConfigureLines_Click(object sender, EventArgs e)
-        {
-            if (isScheduled || isSending || isPreparingLines)
-            {
-                MessageBox.Show(
-                    "No se pueden modificar las líneas mientras hay una programación, envío o preparación en curso.",
-                    "Configurar líneas",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-                return;
-            }
-
-            string? selectedLineId = SelectedWhatsAppLine?.Id;
-            using var settingsForm = new LineSettingsForm();
-
-            if (settingsForm.ShowDialog(this) != DialogResult.OK)
-            {
-                return;
-            }
-
-            LoadWhatsAppLines(selectedLineId);
-        }
-
-        private void btnSelectRunLines_Click(object sender, EventArgs e)
-        {
-            var enabledLines = whatsAppLines
-                .Where(line => line.Enabled)
-                .OrderBy(line => line.Priority)
-                .ThenBy(line => line.DisplayName, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (enabledLines.Count == 0)
-            {
-                MessageBox.Show(
-                    "No hay líneas habilitadas para seleccionar.",
-                    "Seleccionar líneas",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return;
-            }
-
-            var selectedIds = ShowRunLineSelectionDialog(enabledLines);
-            if (selectedIds == null)
-            {
-                return;
-            }
-
-            selectedLineIdsForRun = new HashSet<string>(selectedIds, StringComparer.OrdinalIgnoreCase);
-            UpdateRunLinesSummary();
-            LogSelectedLinesForRun();
-
-            if (!chkAutoLineFallback.Checked && selectedLineIdsForRun.Count > 1)
-            {
-                MessageBox.Show(
-                    "El cambio automático está desactivado. Para esta corrida solo se usará la línea principal seleccionada en el ComboBox.",
-                    "Línea alternativa desactivada",
-                    MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            }
-        }
-
-        private IReadOnlyList<string>? ShowRunLineSelectionDialog(IReadOnlyList<WhatsAppLine> enabledLines)
-        {
-            using var dialog = new Form
-            {
-                Text = "Seleccionar líneas",
-                FormBorderStyle = FormBorderStyle.Sizable,
-                StartPosition = FormStartPosition.CenterParent,
-                MinimizeBox = false,
-                MaximizeBox = false,
-                MinimumSize = new Size(420, 360),
-                ClientSize = new Size(520, 420)
-            };
-
-            var layout = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 1,
-                RowCount = 3,
-                Padding = new Padding(12)
-            };
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
-
-            var instructions = new Label
-            {
-                Dock = DockStyle.Fill,
-                Text = chkAutoLineFallback.Checked
-                    ? "Marca las líneas habilitadas que podrán participar en esta corrida."
-                    : "El cambio automático está desactivado. Puedes marcar líneas, pero solo se enviará desde la principal.",
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-
-            var checkedLines = new CheckedListBox
-            {
-                CheckOnClick = true,
-                Dock = DockStyle.Fill,
-                FormattingEnabled = true
-            };
-
-            var primaryLineId = SelectedWhatsAppLine?.Id;
-            foreach (var line in enabledLines)
-            {
-                bool isChecked = selectedLineIdsForRun.Contains(line.Id)
-                    || string.Equals(line.Id, primaryLineId, StringComparison.OrdinalIgnoreCase);
-                checkedLines.Items.Add(line, isChecked);
-            }
-
-            var actions = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.RightToLeft,
-                WrapContents = false
-            };
-
-            var okButton = new Button
-            {
-                Text = "Aceptar",
-                Size = new Size(96, 32)
-            };
-
-            var cancelButton = new Button
-            {
-                Text = "Cancelar",
-                Size = new Size(96, 32),
-                DialogResult = DialogResult.Cancel
-            };
-
-            IReadOnlyList<string>? result = null;
-            okButton.Click += (_, _) =>
-            {
-                result = checkedLines.CheckedItems
-                    .Cast<WhatsAppLine>()
-                    .Select(line => line.Id)
-                    .ToList();
-
-                dialog.DialogResult = DialogResult.OK;
-                dialog.Close();
-            };
-
-            actions.Controls.Add(okButton);
-            actions.Controls.Add(cancelButton);
-            layout.Controls.Add(instructions, 0, 0);
-            layout.Controls.Add(checkedLines, 0, 1);
-            layout.Controls.Add(actions, 0, 2);
-            dialog.Controls.Add(layout);
-            dialog.AcceptButton = okButton;
-            dialog.CancelButton = cancelButton;
-
-            return dialog.ShowDialog(this) == DialogResult.OK ? result : null;
         }
 
         private bool TryStartSchedule()
@@ -1819,7 +1535,7 @@ namespace Automate_Whatsapp
         private void ShowFallbackWarningIfNeeded(bool showFallbackWarning)
         {
             int enabledSelectedCount = GetSelectedLinesForRun().Count;
-            if (showFallbackWarning && chkAutoLineFallback.Checked && enabledSelectedCount == 1)
+            if (showFallbackWarning && autoFallbackEnabled && enabledSelectedCount == 1)
             {
                 MessageBox.Show(
                     "El cambio automático está activado, pero solo hay una línea seleccionada para esta corrida. El envío continuará sin alternativas disponibles.",
@@ -1878,7 +1594,8 @@ namespace Automate_Whatsapp
 
         private void LogReadyFallbackCandidates()
         {
-            if (!chkAutoLineFallback.Checked || SelectedWhatsAppLine == null)
+            var selectedLine = SelectedWhatsAppLine;
+            if (!autoFallbackEnabled || selectedLine == null)
             {
                 return;
             }
@@ -1887,7 +1604,7 @@ namespace Automate_Whatsapp
                 line.Enabled
                 && line.OperationalState == WhatsAppLineOperationalState.Ready
                 && selectedLineIdsForRun.Contains(line.Id)
-                && !string.Equals(line.Id, SelectedWhatsAppLine.Id, StringComparison.OrdinalIgnoreCase));
+                && !string.Equals(line.Id, selectedLine.Id, StringComparison.OrdinalIgnoreCase));
 
             Log($"Fallback automático habilitado. Líneas alternativas listas: {readyAlternatives}.");
         }
@@ -1916,16 +1633,19 @@ namespace Automate_Whatsapp
 
         private async Task RunSendAsync(List<OutboundMessage> mensajes)
         {
-            Log(FormatDelayBetweenMessagesLog(appSettings.DelayBetweenMessagesMinutes));
+            var configurationState = CreateConfigurationState();
+            var selectedLine = ResolveWhatsAppLineById(configurationState.SelectedWhatsAppLineId);
+
+            Log(FormatDelayBetweenMessagesLog(configurationState.DelayBetweenMessagesMinutes));
 
             var summary = await sendOrchestrator.SendAsync(
                 mensajes,
                 new WhatsAppSendOptions(
-                    SelectedWhatsAppLine,
-                    chkAutoLineFallback.Checked,
+                    selectedLine,
+                    configurationState.AutoFallbackEnabled,
                     InvalidPreviewRows,
-                    SelectedLineIdsForRun: selectedLineIdsForRun.ToList(),
-                    DelayBetweenMessagesMinutes: appSettings.DelayBetweenMessagesMinutes));
+                    SelectedLineIdsForRun: configurationState.SelectedLineIdsForRun.ToList(),
+                    DelayBetweenMessagesMinutes: configurationState.DelayBetweenMessagesMinutes));
 
             if (summary.StoppedByGlobalFailure)
             {

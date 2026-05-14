@@ -30,40 +30,13 @@ namespace Automate_Whatsapp
             salirToolStripMenuItem = new ToolStripMenuItem();
             configuracionToolStripMenuItem = new ToolStripMenuItem();
             configuracionGeneralToolStripMenuItem = new ToolStripMenuItem();
-            lineaWhatsAppToolStripMenuItem = new ToolStripMenuItem();
-            cambiarAutomaticamenteSiFallaToolStripMenuItem = new ToolStripMenuItem();
-            seleccionarLineasToolStripMenuItem = new ToolStripMenuItem();
-            elevenLabsToolStripMenuItem = new ToolStripMenuItem();
             configuracionToolStripSeparator = new ToolStripSeparator();
             mostrarVistaPreviaExcelToolStripMenuItem = new ToolStripMenuItem();
             ayudaToolStripMenuItem = new ToolStripMenuItem();
             acercaDeAutoWhatsAppToolStripMenuItem = new ToolStripMenuItem();
             mainScrollPanel = new Panel();
             mainLayout = new TableLayoutPanel();
-            grpConfiguration = new GroupBox();
-            configurationLayout = new TableLayoutPanel();
-            configurationHeaderLayout = new TableLayoutPanel();
-            btnToggleConfiguration = new Button();
             lblConfigurationSummary = new Label();
-            configurationContentLayout = new TableLayoutPanel();
-            grpElevenLabs = new GroupBox();
-            elevenLabsLayout = new TableLayoutPanel();
-            lblElevenLabsApiKey = new Label();
-            txtElevenLabsApiKey = new TextBox();
-            lblElevenLabsVoiceId = new Label();
-            txtElevenLabsVoiceId = new TextBox();
-            lblElevenLabsModelId = new Label();
-            txtElevenLabsModelId = new TextBox();
-            lblElevenLabsOutputFormat = new Label();
-            txtElevenLabsOutputFormat = new TextBox();
-            lblElevenLabsStability = new Label();
-            nudElevenLabsStability = new NumericUpDown();
-            lblElevenLabsSimilarityBoost = new Label();
-            nudElevenLabsSimilarityBoost = new NumericUpDown();
-            elevenLabsActionsLayout = new FlowLayoutPanel();
-            btnSaveElevenLabsSettings = new Button();
-            btnTestElevenLabsSettings = new Button();
-            lblElevenLabsStatus = new Label();
             grpExcelFile = new GroupBox();
             fileLayout = new TableLayoutPanel();
             btnSelectFile = new Button();
@@ -89,23 +62,9 @@ namespace Automate_Whatsapp
             lblSelectedScheduleTime = new Label();
             btnChangeScheduleTime = new Button();
             lblScheduleSummary = new Label();
-            lblWhatsAppLine = new Label();
-            lineOptionsLayout = new FlowLayoutPanel();
-            cmbWhatsAppLine = new ComboBox();
-            chkAutoLineFallback = new CheckBox();
-            lblRunLines = new Label();
-            runLinesLayout = new FlowLayoutPanel();
-            btnSelectRunLines = new Button();
-            lblRunLinesSummary = new Label();
-            lblLinePreparation = new Label();
-            linePreparationLayout = new FlowLayoutPanel();
-            btnPrepareLine = new Button();
-            btnPrepareAllLines = new Button();
-            lblLinePreparationStatus = new Label();
             scheduleActionsLayout = new FlowLayoutPanel();
             btnSend = new Button();
             btnSendNow = new Button();
-            btnConfigureLines = new Button();
             grpSendStatus = new GroupBox();
             statusLayout = new TableLayoutPanel();
             lblGeneralStatus = new Label();
@@ -124,15 +83,6 @@ namespace Automate_Whatsapp
             mainMenuStrip.SuspendLayout();
             mainScrollPanel.SuspendLayout();
             mainLayout.SuspendLayout();
-            grpConfiguration.SuspendLayout();
-            configurationLayout.SuspendLayout();
-            configurationHeaderLayout.SuspendLayout();
-            configurationContentLayout.SuspendLayout();
-            grpElevenLabs.SuspendLayout();
-            elevenLabsLayout.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)nudElevenLabsStability).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)nudElevenLabsSimilarityBoost).BeginInit();
-            elevenLabsActionsLayout.SuspendLayout();
             grpExcelFile.SuspendLayout();
             fileLayout.SuspendLayout();
             grpExcelPreview.SuspendLayout();
@@ -141,9 +91,6 @@ namespace Automate_Whatsapp
             grpSchedule.SuspendLayout();
             scheduleLayout.SuspendLayout();
             schedulePickerLayout.SuspendLayout();
-            lineOptionsLayout.SuspendLayout();
-            runLinesLayout.SuspendLayout();
-            linePreparationLayout.SuspendLayout();
             scheduleActionsLayout.SuspendLayout();
             grpSendStatus.SuspendLayout();
             statusLayout.SuspendLayout();
@@ -196,7 +143,7 @@ namespace Automate_Whatsapp
             //
             // configuracionToolStripMenuItem
             //
-            configuracionToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { configuracionGeneralToolStripMenuItem, lineaWhatsAppToolStripMenuItem, cambiarAutomaticamenteSiFallaToolStripMenuItem, seleccionarLineasToolStripMenuItem, elevenLabsToolStripMenuItem, configuracionToolStripSeparator, mostrarVistaPreviaExcelToolStripMenuItem });
+            configuracionToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { configuracionGeneralToolStripMenuItem, configuracionToolStripSeparator, mostrarVistaPreviaExcelToolStripMenuItem });
             configuracionToolStripMenuItem.Name = "configuracionToolStripMenuItem";
             configuracionToolStripMenuItem.Size = new Size(95, 20);
             configuracionToolStripMenuItem.Text = "&Configuración";
@@ -208,35 +155,6 @@ namespace Automate_Whatsapp
             configuracionGeneralToolStripMenuItem.Size = new Size(226, 22);
             configuracionGeneralToolStripMenuItem.Text = "Configuración general...";
             configuracionGeneralToolStripMenuItem.Click += configuracionGeneralToolStripMenuItem_Click;
-            //
-            // lineaWhatsAppToolStripMenuItem
-            //
-            lineaWhatsAppToolStripMenuItem.Name = "lineaWhatsAppToolStripMenuItem";
-            lineaWhatsAppToolStripMenuItem.Size = new Size(226, 22);
-            lineaWhatsAppToolStripMenuItem.Text = "Línea WhatsApp";
-            lineaWhatsAppToolStripMenuItem.DropDownOpening += lineaWhatsAppToolStripMenuItem_DropDownOpening;
-            //
-            // cambiarAutomaticamenteSiFallaToolStripMenuItem
-            //
-            cambiarAutomaticamenteSiFallaToolStripMenuItem.CheckOnClick = true;
-            cambiarAutomaticamenteSiFallaToolStripMenuItem.Name = "cambiarAutomaticamenteSiFallaToolStripMenuItem";
-            cambiarAutomaticamenteSiFallaToolStripMenuItem.Size = new Size(226, 22);
-            cambiarAutomaticamenteSiFallaToolStripMenuItem.Text = "Cambiar automáticamente si falla";
-            cambiarAutomaticamenteSiFallaToolStripMenuItem.Click += cambiarAutomaticamenteSiFallaToolStripMenuItem_Click;
-            //
-            // seleccionarLineasToolStripMenuItem
-            //
-            seleccionarLineasToolStripMenuItem.Name = "seleccionarLineasToolStripMenuItem";
-            seleccionarLineasToolStripMenuItem.Size = new Size(226, 22);
-            seleccionarLineasToolStripMenuItem.Text = "Seleccionar líneas...";
-            seleccionarLineasToolStripMenuItem.Click += seleccionarLineasToolStripMenuItem_Click;
-            //
-            // elevenLabsToolStripMenuItem
-            //
-            elevenLabsToolStripMenuItem.Name = "elevenLabsToolStripMenuItem";
-            elevenLabsToolStripMenuItem.Size = new Size(226, 22);
-            elevenLabsToolStripMenuItem.Text = "ElevenLabs...";
-            elevenLabsToolStripMenuItem.Click += elevenLabsToolStripMenuItem_Click;
             //
             // configuracionToolStripSeparator
             //
@@ -281,7 +199,7 @@ namespace Automate_Whatsapp
             mainLayout.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             mainLayout.ColumnCount = 1;
             mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            mainLayout.Controls.Add(grpConfiguration, 0, 0);
+            mainLayout.Controls.Add(lblConfigurationSummary, 0, 0);
             mainLayout.Controls.Add(grpExcelFile, 0, 1);
             mainLayout.Controls.Add(grpExcelPreview, 0, 2);
             mainLayout.Controls.Add(grpSchedule, 0, 3);
@@ -290,7 +208,7 @@ namespace Automate_Whatsapp
             mainLayout.Location = new Point(8, 8);
             mainLayout.Name = "mainLayout";
             mainLayout.RowCount = 6;
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112F));
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 104F));
@@ -299,313 +217,18 @@ namespace Automate_Whatsapp
             mainLayout.Size = new Size(895, 720);
             mainLayout.TabIndex = 0;
             //
-            // grpConfiguration
-            //
-            grpConfiguration.Controls.Add(configurationLayout);
-            grpConfiguration.Dock = DockStyle.Fill;
-            grpConfiguration.Location = new Point(0, 0);
-            grpConfiguration.Margin = new Padding(0, 0, 0, 6);
-            grpConfiguration.Name = "grpConfiguration";
-            grpConfiguration.Padding = new Padding(12, 10, 12, 12);
-            grpConfiguration.Size = new Size(895, 0);
-            grpConfiguration.TabIndex = 0;
-            grpConfiguration.TabStop = false;
-            grpConfiguration.Text = "Configuración";
-            grpConfiguration.Visible = false;
-            //
-            // configurationLayout
-            //
-            configurationLayout.ColumnCount = 1;
-            configurationLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            configurationLayout.Controls.Add(configurationHeaderLayout, 0, 0);
-            configurationLayout.Controls.Add(configurationContentLayout, 0, 1);
-            configurationLayout.Dock = DockStyle.Fill;
-            configurationLayout.Location = new Point(12, 26);
-            configurationLayout.Name = "configurationLayout";
-            configurationLayout.RowCount = 2;
-            configurationLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
-            configurationLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            configurationLayout.Size = new Size(871, 36);
-            configurationLayout.TabIndex = 0;
-            //
-            // configurationHeaderLayout
-            //
-            configurationHeaderLayout.ColumnCount = 2;
-            configurationHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104F));
-            configurationHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            configurationHeaderLayout.Controls.Add(btnToggleConfiguration, 0, 0);
-            configurationHeaderLayout.Controls.Add(lblConfigurationSummary, 1, 0);
-            configurationHeaderLayout.Dock = DockStyle.Fill;
-            configurationHeaderLayout.Location = new Point(0, 0);
-            configurationHeaderLayout.Margin = new Padding(0);
-            configurationHeaderLayout.Name = "configurationHeaderLayout";
-            configurationHeaderLayout.RowCount = 1;
-            configurationHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            configurationHeaderLayout.Size = new Size(871, 32);
-            configurationHeaderLayout.TabIndex = 0;
-            //
-            // btnToggleConfiguration
-            //
-            btnToggleConfiguration.Dock = DockStyle.Fill;
-            btnToggleConfiguration.Location = new Point(0, 0);
-            btnToggleConfiguration.Margin = new Padding(0, 0, 8, 0);
-            btnToggleConfiguration.Name = "btnToggleConfiguration";
-            btnToggleConfiguration.Size = new Size(96, 32);
-            btnToggleConfiguration.TabIndex = 0;
-            btnToggleConfiguration.Text = "Mostrar";
-            btnToggleConfiguration.UseVisualStyleBackColor = true;
-            btnToggleConfiguration.Click += btnToggleConfiguration_Click;
-            //
             // lblConfigurationSummary
             //
             lblConfigurationSummary.AutoEllipsis = true;
             lblConfigurationSummary.Dock = DockStyle.Fill;
             lblConfigurationSummary.ForeColor = Color.FromArgb(75, 85, 99);
-            lblConfigurationSummary.Location = new Point(107, 0);
+            lblConfigurationSummary.Location = new Point(3, 0);
+            lblConfigurationSummary.Margin = new Padding(3, 0, 3, 6);
             lblConfigurationSummary.Name = "lblConfigurationSummary";
-            lblConfigurationSummary.Size = new Size(761, 32);
+            lblConfigurationSummary.Size = new Size(889, 28);
             lblConfigurationSummary.TabIndex = 1;
-            lblConfigurationSummary.Text = "Configuración: sin línea · Auto-fallback: No · Seleccionadas: ninguna";
+            lblConfigurationSummary.Text = "Configuración: sin línea · Espera: 0 min · ElevenLabs: No configurado";
             lblConfigurationSummary.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // configurationContentLayout
-            //
-            configurationContentLayout.ColumnCount = 2;
-            configurationContentLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130F));
-            configurationContentLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            configurationContentLayout.Controls.Add(lblWhatsAppLine, 0, 0);
-            configurationContentLayout.Controls.Add(lineOptionsLayout, 1, 0);
-            configurationContentLayout.Controls.Add(lblRunLines, 0, 1);
-            configurationContentLayout.Controls.Add(runLinesLayout, 1, 1);
-            configurationContentLayout.Controls.Add(lblLinePreparation, 0, 2);
-            configurationContentLayout.Controls.Add(linePreparationLayout, 1, 2);
-            configurationContentLayout.Controls.Add(grpElevenLabs, 0, 3);
-            configurationContentLayout.Dock = DockStyle.Fill;
-            configurationContentLayout.Location = new Point(0, 32);
-            configurationContentLayout.Margin = new Padding(0);
-            configurationContentLayout.Name = "configurationContentLayout";
-            configurationContentLayout.RowCount = 4;
-            configurationContentLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
-            configurationContentLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
-            configurationContentLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
-            configurationContentLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            configurationContentLayout.Size = new Size(871, 0);
-            configurationContentLayout.TabIndex = 1;
-            configurationContentLayout.Visible = false;
-            configurationContentLayout.SetColumnSpan(grpElevenLabs, 2);
-            //
-            // grpElevenLabs
-            //
-            grpElevenLabs.Controls.Add(elevenLabsLayout);
-            grpElevenLabs.Dock = DockStyle.Fill;
-            grpElevenLabs.Location = new Point(3, 119);
-            grpElevenLabs.Name = "grpElevenLabs";
-            grpElevenLabs.Padding = new Padding(10, 8, 10, 10);
-            grpElevenLabs.Size = new Size(865, 0);
-            grpElevenLabs.TabIndex = 8;
-            grpElevenLabs.TabStop = false;
-            grpElevenLabs.Text = "ElevenLabs";
-            //
-            // elevenLabsLayout
-            //
-            elevenLabsLayout.ColumnCount = 4;
-            elevenLabsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 88F));
-            elevenLabsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            elevenLabsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112F));
-            elevenLabsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            elevenLabsLayout.Controls.Add(lblElevenLabsApiKey, 0, 0);
-            elevenLabsLayout.Controls.Add(txtElevenLabsApiKey, 1, 0);
-            elevenLabsLayout.Controls.Add(lblElevenLabsVoiceId, 2, 0);
-            elevenLabsLayout.Controls.Add(txtElevenLabsVoiceId, 3, 0);
-            elevenLabsLayout.Controls.Add(lblElevenLabsModelId, 0, 1);
-            elevenLabsLayout.Controls.Add(txtElevenLabsModelId, 1, 1);
-            elevenLabsLayout.Controls.Add(lblElevenLabsOutputFormat, 2, 1);
-            elevenLabsLayout.Controls.Add(txtElevenLabsOutputFormat, 3, 1);
-            elevenLabsLayout.Controls.Add(lblElevenLabsStability, 0, 2);
-            elevenLabsLayout.Controls.Add(nudElevenLabsStability, 1, 2);
-            elevenLabsLayout.Controls.Add(lblElevenLabsSimilarityBoost, 2, 2);
-            elevenLabsLayout.Controls.Add(nudElevenLabsSimilarityBoost, 3, 2);
-            elevenLabsLayout.Controls.Add(elevenLabsActionsLayout, 0, 3);
-            elevenLabsLayout.Dock = DockStyle.Fill;
-            elevenLabsLayout.Location = new Point(10, 24);
-            elevenLabsLayout.Name = "elevenLabsLayout";
-            elevenLabsLayout.RowCount = 4;
-            elevenLabsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
-            elevenLabsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
-            elevenLabsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
-            elevenLabsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
-            elevenLabsLayout.Size = new Size(845, 0);
-            elevenLabsLayout.TabIndex = 0;
-            elevenLabsLayout.SetColumnSpan(elevenLabsActionsLayout, 4);
-            //
-            // lblElevenLabsApiKey
-            //
-            lblElevenLabsApiKey.Dock = DockStyle.Fill;
-            lblElevenLabsApiKey.Location = new Point(3, 0);
-            lblElevenLabsApiKey.Name = "lblElevenLabsApiKey";
-            lblElevenLabsApiKey.Size = new Size(82, 34);
-            lblElevenLabsApiKey.TabIndex = 0;
-            lblElevenLabsApiKey.Text = "API Key:";
-            lblElevenLabsApiKey.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // txtElevenLabsApiKey
-            //
-            txtElevenLabsApiKey.Dock = DockStyle.Fill;
-            txtElevenLabsApiKey.Location = new Point(91, 5);
-            txtElevenLabsApiKey.Margin = new Padding(3, 5, 12, 3);
-            txtElevenLabsApiKey.Name = "txtElevenLabsApiKey";
-            txtElevenLabsApiKey.Size = new Size(310, 23);
-            txtElevenLabsApiKey.TabIndex = 1;
-            txtElevenLabsApiKey.UseSystemPasswordChar = true;
-            //
-            // lblElevenLabsVoiceId
-            //
-            lblElevenLabsVoiceId.Dock = DockStyle.Fill;
-            lblElevenLabsVoiceId.Location = new Point(419, 0);
-            lblElevenLabsVoiceId.Name = "lblElevenLabsVoiceId";
-            lblElevenLabsVoiceId.Size = new Size(106, 34);
-            lblElevenLabsVoiceId.TabIndex = 2;
-            lblElevenLabsVoiceId.Text = "Voice ID:";
-            lblElevenLabsVoiceId.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // txtElevenLabsVoiceId
-            //
-            txtElevenLabsVoiceId.Dock = DockStyle.Fill;
-            txtElevenLabsVoiceId.Location = new Point(531, 5);
-            txtElevenLabsVoiceId.Margin = new Padding(3, 5, 3, 3);
-            txtElevenLabsVoiceId.Name = "txtElevenLabsVoiceId";
-            txtElevenLabsVoiceId.Size = new Size(311, 23);
-            txtElevenLabsVoiceId.TabIndex = 3;
-            //
-            // lblElevenLabsModelId
-            //
-            lblElevenLabsModelId.Dock = DockStyle.Fill;
-            lblElevenLabsModelId.Location = new Point(3, 34);
-            lblElevenLabsModelId.Name = "lblElevenLabsModelId";
-            lblElevenLabsModelId.Size = new Size(82, 34);
-            lblElevenLabsModelId.TabIndex = 4;
-            lblElevenLabsModelId.Text = "Modelo:";
-            lblElevenLabsModelId.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // txtElevenLabsModelId
-            //
-            txtElevenLabsModelId.Dock = DockStyle.Fill;
-            txtElevenLabsModelId.Location = new Point(91, 39);
-            txtElevenLabsModelId.Margin = new Padding(3, 5, 12, 3);
-            txtElevenLabsModelId.Name = "txtElevenLabsModelId";
-            txtElevenLabsModelId.Size = new Size(310, 23);
-            txtElevenLabsModelId.TabIndex = 5;
-            //
-            // lblElevenLabsOutputFormat
-            //
-            lblElevenLabsOutputFormat.Dock = DockStyle.Fill;
-            lblElevenLabsOutputFormat.Location = new Point(419, 34);
-            lblElevenLabsOutputFormat.Name = "lblElevenLabsOutputFormat";
-            lblElevenLabsOutputFormat.Size = new Size(106, 34);
-            lblElevenLabsOutputFormat.TabIndex = 6;
-            lblElevenLabsOutputFormat.Text = "Output format:";
-            lblElevenLabsOutputFormat.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // txtElevenLabsOutputFormat
-            //
-            txtElevenLabsOutputFormat.Dock = DockStyle.Fill;
-            txtElevenLabsOutputFormat.Location = new Point(531, 39);
-            txtElevenLabsOutputFormat.Margin = new Padding(3, 5, 3, 3);
-            txtElevenLabsOutputFormat.Name = "txtElevenLabsOutputFormat";
-            txtElevenLabsOutputFormat.Size = new Size(311, 23);
-            txtElevenLabsOutputFormat.TabIndex = 7;
-            //
-            // lblElevenLabsStability
-            //
-            lblElevenLabsStability.Dock = DockStyle.Fill;
-            lblElevenLabsStability.Location = new Point(3, 68);
-            lblElevenLabsStability.Name = "lblElevenLabsStability";
-            lblElevenLabsStability.Size = new Size(82, 34);
-            lblElevenLabsStability.TabIndex = 8;
-            lblElevenLabsStability.Text = "Stability:";
-            lblElevenLabsStability.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // nudElevenLabsStability
-            //
-            nudElevenLabsStability.DecimalPlaces = 2;
-            nudElevenLabsStability.Dock = DockStyle.Left;
-            nudElevenLabsStability.Increment = new decimal(new int[] { 5, 0, 0, 131072 });
-            nudElevenLabsStability.Location = new Point(91, 73);
-            nudElevenLabsStability.Margin = new Padding(3, 5, 12, 3);
-            nudElevenLabsStability.Maximum = new decimal(new int[] { 1, 0, 0, 0 });
-            nudElevenLabsStability.Name = "nudElevenLabsStability";
-            nudElevenLabsStability.Size = new Size(86, 23);
-            nudElevenLabsStability.TabIndex = 9;
-            nudElevenLabsStability.Value = new decimal(new int[] { 75, 0, 0, 131072 });
-            //
-            // lblElevenLabsSimilarityBoost
-            //
-            lblElevenLabsSimilarityBoost.Dock = DockStyle.Fill;
-            lblElevenLabsSimilarityBoost.Location = new Point(419, 68);
-            lblElevenLabsSimilarityBoost.Name = "lblElevenLabsSimilarityBoost";
-            lblElevenLabsSimilarityBoost.Size = new Size(106, 34);
-            lblElevenLabsSimilarityBoost.TabIndex = 10;
-            lblElevenLabsSimilarityBoost.Text = "Similarity Boost:";
-            lblElevenLabsSimilarityBoost.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // nudElevenLabsSimilarityBoost
-            //
-            nudElevenLabsSimilarityBoost.DecimalPlaces = 2;
-            nudElevenLabsSimilarityBoost.Dock = DockStyle.Left;
-            nudElevenLabsSimilarityBoost.Increment = new decimal(new int[] { 5, 0, 0, 131072 });
-            nudElevenLabsSimilarityBoost.Location = new Point(531, 73);
-            nudElevenLabsSimilarityBoost.Margin = new Padding(3, 5, 3, 3);
-            nudElevenLabsSimilarityBoost.Maximum = new decimal(new int[] { 1, 0, 0, 0 });
-            nudElevenLabsSimilarityBoost.Name = "nudElevenLabsSimilarityBoost";
-            nudElevenLabsSimilarityBoost.Size = new Size(86, 23);
-            nudElevenLabsSimilarityBoost.TabIndex = 11;
-            nudElevenLabsSimilarityBoost.Value = new decimal(new int[] { 75, 0, 0, 131072 });
-            //
-            // elevenLabsActionsLayout
-            //
-            elevenLabsActionsLayout.Controls.Add(btnSaveElevenLabsSettings);
-            elevenLabsActionsLayout.Controls.Add(btnTestElevenLabsSettings);
-            elevenLabsActionsLayout.Controls.Add(lblElevenLabsStatus);
-            elevenLabsActionsLayout.Dock = DockStyle.Fill;
-            elevenLabsActionsLayout.Location = new Point(0, 102);
-            elevenLabsActionsLayout.Margin = new Padding(0);
-            elevenLabsActionsLayout.Name = "elevenLabsActionsLayout";
-            elevenLabsActionsLayout.Size = new Size(845, 42);
-            elevenLabsActionsLayout.TabIndex = 12;
-            elevenLabsActionsLayout.WrapContents = false;
-            //
-            // btnSaveElevenLabsSettings
-            //
-            btnSaveElevenLabsSettings.Location = new Point(3, 5);
-            btnSaveElevenLabsSettings.Margin = new Padding(3, 5, 8, 3);
-            btnSaveElevenLabsSettings.Name = "btnSaveElevenLabsSettings";
-            btnSaveElevenLabsSettings.Size = new Size(140, 30);
-            btnSaveElevenLabsSettings.TabIndex = 0;
-            btnSaveElevenLabsSettings.Text = "Guardar configuración";
-            btnSaveElevenLabsSettings.UseVisualStyleBackColor = true;
-            btnSaveElevenLabsSettings.Click += btnSaveElevenLabsSettings_Click;
-            //
-            // btnTestElevenLabsSettings
-            //
-            btnTestElevenLabsSettings.Location = new Point(154, 5);
-            btnTestElevenLabsSettings.Margin = new Padding(3, 5, 12, 3);
-            btnTestElevenLabsSettings.Name = "btnTestElevenLabsSettings";
-            btnTestElevenLabsSettings.Size = new Size(130, 30);
-            btnTestElevenLabsSettings.TabIndex = 1;
-            btnTestElevenLabsSettings.Text = "Probar configuración";
-            btnTestElevenLabsSettings.UseVisualStyleBackColor = true;
-            btnTestElevenLabsSettings.Click += btnTestElevenLabsSettings_Click;
-            //
-            // lblElevenLabsStatus
-            //
-            lblElevenLabsStatus.AutoEllipsis = true;
-            lblElevenLabsStatus.ForeColor = Color.FromArgb(75, 85, 99);
-            lblElevenLabsStatus.Location = new Point(299, 0);
-            lblElevenLabsStatus.Name = "lblElevenLabsStatus";
-            lblElevenLabsStatus.Size = new Size(250, 40);
-            lblElevenLabsStatus.TabIndex = 2;
-            lblElevenLabsStatus.Text = "No configurado";
-            lblElevenLabsStatus.TextAlign = ContentAlignment.MiddleLeft;
             //
             // grpExcelFile
             //
@@ -920,154 +543,6 @@ namespace Automate_Whatsapp
             lblScheduleSummary.Text = "Programado para:";
             lblScheduleSummary.TextAlign = ContentAlignment.MiddleLeft;
             //
-            // lblWhatsAppLine
-            //
-            lblWhatsAppLine.Dock = DockStyle.Fill;
-            lblWhatsAppLine.Location = new Point(3, 0);
-            lblWhatsAppLine.Name = "lblWhatsAppLine";
-            lblWhatsAppLine.Size = new Size(124, 34);
-            lblWhatsAppLine.TabIndex = 2;
-            lblWhatsAppLine.Text = "Línea WhatsApp:";
-            lblWhatsAppLine.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // lineOptionsLayout
-            //
-            lineOptionsLayout.Controls.Add(cmbWhatsAppLine);
-            lineOptionsLayout.Controls.Add(chkAutoLineFallback);
-            lineOptionsLayout.Dock = DockStyle.Fill;
-            lineOptionsLayout.Location = new Point(130, 0);
-            lineOptionsLayout.Margin = new Padding(0);
-            lineOptionsLayout.Name = "lineOptionsLayout";
-            lineOptionsLayout.Size = new Size(715, 34);
-            lineOptionsLayout.TabIndex = 3;
-            lineOptionsLayout.WrapContents = false;
-            //
-            // cmbWhatsAppLine
-            //
-            cmbWhatsAppLine.DropDownStyle = ComboBoxStyle.DropDownList;
-            cmbWhatsAppLine.FormattingEnabled = true;
-            cmbWhatsAppLine.Location = new Point(3, 5);
-            cmbWhatsAppLine.Margin = new Padding(3, 5, 16, 3);
-            cmbWhatsAppLine.Name = "cmbWhatsAppLine";
-            cmbWhatsAppLine.Size = new Size(230, 23);
-            cmbWhatsAppLine.TabIndex = 0;
-            cmbWhatsAppLine.SelectedIndexChanged += cmbWhatsAppLine_SelectedIndexChanged;
-            //
-            // chkAutoLineFallback
-            //
-            chkAutoLineFallback.Anchor = AnchorStyles.Left;
-            chkAutoLineFallback.AutoSize = true;
-            chkAutoLineFallback.Checked = false;
-            chkAutoLineFallback.Location = new Point(252, 7);
-            chkAutoLineFallback.Margin = new Padding(3, 7, 3, 3);
-            chkAutoLineFallback.Name = "chkAutoLineFallback";
-            chkAutoLineFallback.Size = new Size(225, 19);
-            chkAutoLineFallback.TabIndex = 1;
-            chkAutoLineFallback.Text = "Cambiar automáticamente si falla";
-            chkAutoLineFallback.UseVisualStyleBackColor = true;
-            chkAutoLineFallback.CheckedChanged += chkAutoLineFallback_CheckedChanged;
-            //
-            // lblRunLines
-            //
-            lblRunLines.Dock = DockStyle.Fill;
-            lblRunLines.Location = new Point(3, 34);
-            lblRunLines.Name = "lblRunLines";
-            lblRunLines.Size = new Size(124, 40);
-            lblRunLines.TabIndex = 4;
-            lblRunLines.Text = "Líneas corrida:";
-            lblRunLines.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // runLinesLayout
-            //
-            runLinesLayout.Controls.Add(btnSelectRunLines);
-            runLinesLayout.Controls.Add(lblRunLinesSummary);
-            runLinesLayout.Dock = DockStyle.Fill;
-            runLinesLayout.Location = new Point(130, 34);
-            runLinesLayout.Margin = new Padding(0);
-            runLinesLayout.Name = "runLinesLayout";
-            runLinesLayout.Size = new Size(715, 40);
-            runLinesLayout.TabIndex = 5;
-            runLinesLayout.WrapContents = false;
-            //
-            // btnSelectRunLines
-            //
-            btnSelectRunLines.Location = new Point(3, 5);
-            btnSelectRunLines.Margin = new Padding(3, 5, 10, 3);
-            btnSelectRunLines.Name = "btnSelectRunLines";
-            btnSelectRunLines.Size = new Size(150, 30);
-            btnSelectRunLines.TabIndex = 0;
-            btnSelectRunLines.Text = "Seleccionar líneas";
-            btnSelectRunLines.UseVisualStyleBackColor = true;
-            btnSelectRunLines.Click += btnSelectRunLines_Click;
-            //
-            // lblRunLinesSummary
-            //
-            lblRunLinesSummary.AutoEllipsis = true;
-            lblRunLinesSummary.ForeColor = Color.FromArgb(75, 85, 99);
-            lblRunLinesSummary.Location = new Point(166, 0);
-            lblRunLinesSummary.Name = "lblRunLinesSummary";
-            lblRunLinesSummary.Size = new Size(360, 40);
-            lblRunLinesSummary.TabIndex = 1;
-            lblRunLinesSummary.Text = "Líneas seleccionadas: Principal";
-            lblRunLinesSummary.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // lblLinePreparation
-            //
-            lblLinePreparation.Dock = DockStyle.Fill;
-            lblLinePreparation.Location = new Point(3, 74);
-            lblLinePreparation.Name = "lblLinePreparation";
-            lblLinePreparation.Size = new Size(124, 42);
-            lblLinePreparation.TabIndex = 6;
-            lblLinePreparation.Text = "Preparación:";
-            lblLinePreparation.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // linePreparationLayout
-            //
-            linePreparationLayout.Controls.Add(btnConfigureLines);
-            linePreparationLayout.Controls.Add(btnPrepareLine);
-            linePreparationLayout.Controls.Add(btnPrepareAllLines);
-            linePreparationLayout.Controls.Add(lblLinePreparationStatus);
-            linePreparationLayout.Dock = DockStyle.Fill;
-            linePreparationLayout.Location = new Point(130, 74);
-            linePreparationLayout.Margin = new Padding(0);
-            linePreparationLayout.Name = "linePreparationLayout";
-            linePreparationLayout.Size = new Size(715, 42);
-            linePreparationLayout.TabIndex = 7;
-            linePreparationLayout.WrapContents = false;
-            //
-            // btnPrepareLine
-            //
-            btnPrepareLine.Location = new Point(135, 5);
-            btnPrepareLine.Margin = new Padding(3, 5, 6, 3);
-            btnPrepareLine.Name = "btnPrepareLine";
-            btnPrepareLine.Size = new Size(108, 30);
-            btnPrepareLine.TabIndex = 0;
-            btnPrepareLine.Text = "Preparar línea";
-            btnPrepareLine.UseVisualStyleBackColor = true;
-            btnPrepareLine.Click += btnPrepareLine_Click;
-            //
-            // btnPrepareAllLines
-            //
-            btnPrepareAllLines.Location = new Point(252, 5);
-            btnPrepareAllLines.Margin = new Padding(3, 5, 12, 3);
-            btnPrepareAllLines.Name = "btnPrepareAllLines";
-            btnPrepareAllLines.Size = new Size(108, 30);
-            btnPrepareAllLines.TabIndex = 1;
-            btnPrepareAllLines.Text = "Preparar todas";
-            btnPrepareAllLines.UseVisualStyleBackColor = true;
-            btnPrepareAllLines.Click += btnPrepareAllLines_Click;
-            //
-            // lblLinePreparationStatus
-            //
-            lblLinePreparationStatus.AutoEllipsis = true;
-            lblLinePreparationStatus.ForeColor = Color.FromArgb(75, 85, 99);
-            lblLinePreparationStatus.Location = new Point(375, 0);
-            lblLinePreparationStatus.Name = "lblLinePreparationStatus";
-            lblLinePreparationStatus.Size = new Size(220, 40);
-            lblLinePreparationStatus.TabIndex = 2;
-            lblLinePreparationStatus.Text = "Estado línea: Sin verificar";
-            lblLinePreparationStatus.TextAlign = ContentAlignment.MiddleLeft;
-            //
             // scheduleActionsLayout
             //
             scheduleActionsLayout.Controls.Add(btnSend);
@@ -1112,17 +587,6 @@ namespace Automate_Whatsapp
             btnSendNow.Text = "Enviar ahora";
             btnSendNow.UseVisualStyleBackColor = false;
             btnSendNow.Click += btnSendNow_Click;
-            //
-            // btnConfigureLines
-            //
-            btnConfigureLines.Location = new Point(3, 5);
-            btnConfigureLines.Margin = new Padding(3, 5, 6, 3);
-            btnConfigureLines.Name = "btnConfigureLines";
-            btnConfigureLines.Size = new Size(126, 32);
-            btnConfigureLines.TabIndex = 2;
-            btnConfigureLines.Text = "Configurar líneas";
-            btnConfigureLines.UseVisualStyleBackColor = true;
-            btnConfigureLines.Click += btnConfigureLines_Click;
             //
             // grpSendStatus
             //
@@ -1322,17 +786,8 @@ namespace Automate_Whatsapp
             StartPosition = FormStartPosition.CenterScreen;
             Text = "AutoWhatsApp";
             FormClosing += Form1_FormClosing;
-            elevenLabsActionsLayout.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)nudElevenLabsSimilarityBoost).EndInit();
-            ((System.ComponentModel.ISupportInitialize)nudElevenLabsStability).EndInit();
-            elevenLabsLayout.ResumeLayout(false);
-            elevenLabsLayout.PerformLayout();
-            grpElevenLabs.ResumeLayout(false);
-            configurationContentLayout.ResumeLayout(false);
-            configurationHeaderLayout.ResumeLayout(false);
-            configurationLayout.ResumeLayout(false);
-            grpConfiguration.ResumeLayout(false);
             mainLayout.ResumeLayout(false);
+            mainLayout.PerformLayout();
             mainScrollPanel.ResumeLayout(false);
             grpExcelFile.ResumeLayout(false);
             fileLayout.ResumeLayout(false);
@@ -1343,10 +798,6 @@ namespace Automate_Whatsapp
             grpSchedule.ResumeLayout(false);
             scheduleLayout.ResumeLayout(false);
             schedulePickerLayout.ResumeLayout(false);
-            lineOptionsLayout.ResumeLayout(false);
-            lineOptionsLayout.PerformLayout();
-            runLinesLayout.ResumeLayout(false);
-            linePreparationLayout.ResumeLayout(false);
             scheduleActionsLayout.ResumeLayout(false);
             grpSendStatus.ResumeLayout(false);
             statusLayout.ResumeLayout(false);
@@ -1370,40 +821,13 @@ namespace Automate_Whatsapp
         private System.Windows.Forms.ToolStripMenuItem salirToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem configuracionToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem configuracionGeneralToolStripMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem lineaWhatsAppToolStripMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem cambiarAutomaticamenteSiFallaToolStripMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem seleccionarLineasToolStripMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem elevenLabsToolStripMenuItem;
         private System.Windows.Forms.ToolStripSeparator configuracionToolStripSeparator;
         private System.Windows.Forms.ToolStripMenuItem mostrarVistaPreviaExcelToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem ayudaToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem acercaDeAutoWhatsAppToolStripMenuItem;
         private System.Windows.Forms.TableLayoutPanel mainLayout;
         private System.Windows.Forms.Panel mainScrollPanel;
-        private System.Windows.Forms.GroupBox grpConfiguration;
-        private System.Windows.Forms.TableLayoutPanel configurationLayout;
-        private System.Windows.Forms.TableLayoutPanel configurationHeaderLayout;
-        private System.Windows.Forms.Button btnToggleConfiguration;
         private System.Windows.Forms.Label lblConfigurationSummary;
-        private System.Windows.Forms.TableLayoutPanel configurationContentLayout;
-        private System.Windows.Forms.GroupBox grpElevenLabs;
-        private System.Windows.Forms.TableLayoutPanel elevenLabsLayout;
-        private System.Windows.Forms.Label lblElevenLabsApiKey;
-        private System.Windows.Forms.TextBox txtElevenLabsApiKey;
-        private System.Windows.Forms.Label lblElevenLabsVoiceId;
-        private System.Windows.Forms.TextBox txtElevenLabsVoiceId;
-        private System.Windows.Forms.Label lblElevenLabsModelId;
-        private System.Windows.Forms.TextBox txtElevenLabsModelId;
-        private System.Windows.Forms.Label lblElevenLabsOutputFormat;
-        private System.Windows.Forms.TextBox txtElevenLabsOutputFormat;
-        private System.Windows.Forms.Label lblElevenLabsStability;
-        private System.Windows.Forms.NumericUpDown nudElevenLabsStability;
-        private System.Windows.Forms.Label lblElevenLabsSimilarityBoost;
-        private System.Windows.Forms.NumericUpDown nudElevenLabsSimilarityBoost;
-        private System.Windows.Forms.FlowLayoutPanel elevenLabsActionsLayout;
-        private System.Windows.Forms.Button btnSaveElevenLabsSettings;
-        private System.Windows.Forms.Button btnTestElevenLabsSettings;
-        private System.Windows.Forms.Label lblElevenLabsStatus;
         private System.Windows.Forms.GroupBox grpExcelFile;
         private System.Windows.Forms.TableLayoutPanel fileLayout;
         private System.Windows.Forms.GroupBox grpExcelPreview;
@@ -1423,7 +847,6 @@ namespace Automate_Whatsapp
         private System.Windows.Forms.Label lblSelectedScheduleTime;
         private System.Windows.Forms.Button btnChangeScheduleTime;
         private System.Windows.Forms.Label lblScheduleSummary;
-        private System.Windows.Forms.FlowLayoutPanel lineOptionsLayout;
         private System.Windows.Forms.FlowLayoutPanel scheduleActionsLayout;
         private System.Windows.Forms.GroupBox grpSendStatus;
         private System.Windows.Forms.TableLayoutPanel statusLayout;
@@ -1441,24 +864,11 @@ namespace Automate_Whatsapp
         private System.Windows.Forms.Label lblExcelCompactSummary;
         private System.Windows.Forms.ToolTip uiToolTip;
         private System.Windows.Forms.Button btnSend;
-        private System.Windows.Forms.Button btnConfigureLines;
         private System.Windows.Forms.ProgressBar progressBar1;
         private System.Windows.Forms.TextBox txtLog;
         private System.Windows.Forms.OpenFileDialog openFileDialog1;
         private System.Windows.Forms.Button btnPauseResume;
         private System.Windows.Forms.Button btnCancel;
-        private System.Windows.Forms.Label lblWhatsAppLine;
-        private System.Windows.Forms.ComboBox cmbWhatsAppLine;
-        private System.Windows.Forms.CheckBox chkAutoLineFallback;
-        private System.Windows.Forms.Label lblRunLines;
-        private System.Windows.Forms.FlowLayoutPanel runLinesLayout;
-        private System.Windows.Forms.Button btnSelectRunLines;
-        private System.Windows.Forms.Label lblRunLinesSummary;
-        private System.Windows.Forms.Label lblLinePreparation;
-        private System.Windows.Forms.FlowLayoutPanel linePreparationLayout;
-        private System.Windows.Forms.Button btnPrepareLine;
-        private System.Windows.Forms.Button btnPrepareAllLines;
-        private System.Windows.Forms.Label lblLinePreparationStatus;
         private System.Windows.Forms.Button btnSendNow;
     }
 }
