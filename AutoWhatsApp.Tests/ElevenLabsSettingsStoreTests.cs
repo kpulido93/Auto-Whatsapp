@@ -33,6 +33,10 @@ public sealed class ElevenLabsSettingsStoreTests
             Assert.Equal(settings.OutputFormat, loadedSettings.OutputFormat);
             Assert.Equal(settings.Stability, loadedSettings.Stability);
             Assert.Equal(settings.SimilarityBoost, loadedSettings.SimilarityBoost);
+
+            ElevenLabsSettings loadedOrEnvironmentSettings = ElevenLabsSettingsStore.LoadOrEnvironment(configPath);
+            Assert.Equal(settings.ApiKey, loadedOrEnvironmentSettings.ApiKey);
+            Assert.Equal(settings.VoiceId, loadedOrEnvironmentSettings.VoiceId);
         }
         finally
         {

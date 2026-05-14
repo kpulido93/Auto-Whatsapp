@@ -535,21 +535,11 @@ namespace Automate_Whatsapp
 
             try
             {
-                ElevenLabsSettingsStore.Save(settings);
-                UpdateElevenLabsStatus(settings);
-                Log($"Configuración ElevenLabs guardada en {ElevenLabsSettingsStore.GetConfigPath()}.");
+                SaveElevenLabsSettings(settings, $"Configuración ElevenLabs guardada en {ElevenLabsSettingsStore.GetConfigPath()}.");
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
             {
-                lblElevenLabsStatus.Text = "Error de validación";
-                lblElevenLabsStatus.ForeColor = Color.FromArgb(185, 28, 28);
-                uiToolTip.SetToolTip(lblElevenLabsStatus, ex.Message);
-                Log($"No se pudo guardar la configuración ElevenLabs: {ex.Message}");
-                MessageBox.Show(
-                    "No se pudo guardar la configuración de ElevenLabs.",
-                    "ElevenLabs",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                ReportElevenLabsSettingsSaveError(ex);
             }
         }
 
@@ -562,8 +552,34 @@ namespace Automate_Whatsapp
                 return;
             }
 
+            try
+            {
+                SaveElevenLabsSettings(settings, "Prueba ElevenLabs correcta: configuración mínima presente y guardada localmente. No se llamó a la API.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
+            {
+                ReportElevenLabsSettingsSaveError(ex);
+            }
+        }
+
+        private void SaveElevenLabsSettings(ElevenLabsSettings settings, string successLogMessage)
+        {
+            ElevenLabsSettingsStore.Save(settings);
             UpdateElevenLabsStatus(settings);
-            Log("Prueba ElevenLabs correcta: configuración mínima presente. No se llamó a la API.");
+            Log(successLogMessage);
+        }
+
+        private void ReportElevenLabsSettingsSaveError(Exception ex)
+        {
+            lblElevenLabsStatus.Text = "Error al guardar";
+            lblElevenLabsStatus.ForeColor = Color.FromArgb(185, 28, 28);
+            uiToolTip.SetToolTip(lblElevenLabsStatus, ex.Message);
+            Log($"No se pudo guardar la configuración ElevenLabs: {ex.Message}");
+            MessageBox.Show(
+                "No se pudo guardar la configuración de ElevenLabs.",
+                "ElevenLabs",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
 
         private bool TryBuildElevenLabsSettingsFromUi(

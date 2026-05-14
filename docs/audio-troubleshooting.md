@@ -13,7 +13,7 @@ Para enviar audios, configura ElevenLabs desde el panel **Configuracion**, secci
 - `ELEVENLABS_STABILITY` (opcional, por defecto `0.75`)
 - `ELEVENLABS_SIMILARITY_BOOST` (opcional, por defecto `0.75`)
 
-Usa **Probar configuracion** para validar que la API key y el Voice ID existen antes de ejecutar una corrida con audios. Esta prueba valida configuracion minima; no genera audio ni llama a la API.
+Usa **Probar configuracion** para validar que la API key y el Voice ID existen antes de ejecutar una corrida con audios. Esta prueba valida configuracion minima, guarda la configuracion localmente y no genera audio ni llama a la API.
 
 ## Validar `toAudio`
 
