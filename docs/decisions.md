@@ -87,28 +87,34 @@ Consecuencia operativa:
 
 ## Adjuntos de audio en WhatsApp Web
 
-El audio se adjunta directamente mediante un `input[type=file]` compatible. La opcion visible `Audio` del menu de adjuntos se conserva solo como senal de diagnostico, junto con el texto visible `Audio` y el icono SVG con `title` `ic-headphones-filled`.
+El audio se adjunta mediante un `input[type=file]` compatible. Si ese input no existe al abrir el menu de adjuntos, la app activa la opcion visible `Audio` y vuelve a buscar el input compatible.
 
 Motivos:
 
-- Hacer click en la opcion visible `Audio` puede abrir el dialogo nativo de Windows "Abrir", que Selenium no puede controlar de forma fiable.
-- WhatsApp Web expone inputs file en el DOM al abrir adjuntos; Selenium puede adjuntar el archivo con `input.SendKeys(fullAudioPath)` sin usar el explorador nativo.
+- Algunas versiones de WhatsApp Web exponen el input de audio solo despues de activar la opcion visible `Audio`.
+- Selenium adjunta el archivo con `input.SendKeys(fullAudioPath)` cuando existe input compatible; si WhatsApp abre el dialogo nativo tras activar `Audio`, se usa como fallback controlado.
 - Se considera compatible solo un input cuyo `accept` contenga `audio`, `.ogg`, `.opus`, `.mp3`, `.m4a` o `.wav`.
-- El texto visible `Audio` y el SVG con `title` `ic-headphones-filled` siguen siendo utiles para diagnosticar cambios del DOM, pero no se usan como camino feliz de seleccion.
+- La opcion `Audio` se localiza con texto visible, SVG con `title` `ic-headphones-filled` y ancestros clickeables `li`, `div`, `button`, `role='button'` o `tabindex`.
 - `SendKeys` solo confirma que Selenium entrego la ruta al input; no confirma que WhatsApp haya creado el adjunto ni que el envio haya salido.
-- Si por un cambio de DOM o una ruta accidental se abre el dialogo nativo `Abrir/Open`, la corrida queda en riesgo de continuar con la UI bloqueada.
+- Si WhatsApp abre el dialogo nativo `Abrir/Open`, la app debe cargar la ruta del audio o cerrar el dialogo antes de continuar.
 - No se usan clases CSS obfuscadas de WhatsApp porque cambian con frecuencia entre WhatsApp normal y Business.
 
 Consecuencia operativa:
 
-- Tras abrir adjuntos, la app enumera los `input[type=file]`, registra cuantos hay y sus `accept`, selecciona solo un input compatible con audio y envia el archivo directamente por `SendKeys`.
+- Tras abrir adjuntos, la app enumera los `input[type=file]`, registra cuantos hay y sus `accept`, y usa un input compatible si ya existe.
+- Si solo hay inputs no compatibles, como `image/*`, pero la opcion `Audio` esta visible, la app hace click robusto en esa opcion, vuelve a enumerar inputs y usa el input de audio que aparezca despues.
 - Despues de `SendKeys`, la app espera un preview de adjunto con varias senales UI: `role='dialog'`, nombre de archivo cuando esta visible, boton enviar contenido en el panel y controles de preview de adjunto.
 - El boton enviar se busca dentro del preview detectado; no se usa un selector global del chat para enviar audios.
 - El log de exito solo se emite despues de entregar el path al input, detectar el preview, hacer click en el boton enviar del preview y comprobar que el preview se cerro.
+- El flujo registra etapas `AudioAttach.OpenMenu`, `AudioAttach.FindInputBeforeClick`, `AudioAttach.ClickAudioOption`, `AudioAttach.FindInputAfterClick`, `AudioAttach.NativeDialogUpload`, `AudioAttach.WaitPreview`, `AudioAttach.ClickPreviewSend`, `AudioAttach.WaitPreviewClose` y `AudioAttach.Done`.
+- Los fallos de audio incluyen en una linea la etapa, inputs file detectados, accepts detectados, presencia de texto `Audio`, presencia del icono `ic-headphones-filled`, dialogo nativo detectado y health actual de WhatsApp.
 - Si WhatsApp no muestra preview, si no hay boton enviar dentro del preview o si el preview no se cierra despues del click, el contacto falla con `WhatsAppAttachmentFailed` no global.
-- Como defensa, despues de abrir adjuntos, despues de entregar el path al input, ante fallos de preview y antes del exito se busca un dialogo nativo de archivo de Chrome con titulo `Abrir` u `Open`; si aparece, se intenta cerrar con Escape y se valida que WhatsApp vuelva a estar interactuable.
-- Si el dialogo nativo se cierra y WhatsApp queda `Ready`, solo falla el contacto actual y se registra que el dialogo fue cerrado. Si no se puede cerrar o WhatsApp no vuelve a estar interactuable, el fallo se considera global para detener la corrida.
-- Si no hay input compatible, no se hace click en la opcion `Audio`; el contacto falla con `WhatsAppAttachmentFailed` y el log conserva el diagnostico de inputs, texto `Audio` e icono `ic-headphones-filled`.
+- Si despues del click en `Audio` se abre el dialogo nativo `Abrir/Open`, la app lo trae al frente, pega `fullAudioPath` desde el portapapeles y presiona Enter; solo sigue si el dialogo se cierra y despues aparece preview.
+- Como defensa, despues de abrir adjuntos, despues de entregar el path al input o dialogo, ante fallos de preview y antes del exito se busca un dialogo nativo de archivo de Chrome con titulo `Abrir` u `Open`; si aparece fuera del fallback esperado, se intenta cerrar con Escape y se valida que WhatsApp vuelva a estar interactuable.
+- Despues de confirmar que el preview se cerro, el envio ya se considera confirmado; si queda abierto un dialogo nativo `Abrir/Open`, la app intenta limpiarlo con Escape y, si sigue abierto, con `WM_CLOSE` sobre el handle del dialogo.
+- Si esa limpieza post-envio falla, se registra advertencia pero no se marca fallido ni se reintenta el audio para evitar duplicados.
+- Si el dialogo nativo no puede cargarse ni cerrarse, el fallo se considera global para detener la corrida. Si se cierra y WhatsApp queda `Ready`, solo falla el contacto actual.
+- Si despues del click en `Audio` no aparece input compatible, dialogo nativo ni preview, el contacto falla con `WhatsAppAttachmentFailed` y el log conserva diagnostico de inputs antes y despues del click, texto `Audio`, icono `ic-headphones-filled` y sospecha de dialogo nativo.
 - Si el input compatible esta oculto y Selenium lo rechaza por visibilidad o interactuabilidad, la app intenta hacerlo visible con JavaScript sin cambiar `accept` ni asignar archivos por script, y reintenta `SendKeys`.
 - Si falla la UI de adjuntos pero WhatsApp Web sigue `Ready`, el resultado es `WhatsAppAttachmentFailed` no global: falla solo el contacto actual, aumenta `Procesados` y `Fallidos`, y se conserva la linea activa.
 - Si durante el fallo de adjuntos se detecta `LoginRequired`, `PhoneDisconnected`, `BrowserUnavailable` o `SenderAccountBlockedOrRestricted`, se mantiene la clasificacion global y aplica el fallback o la detencion de la corrida.

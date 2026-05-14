@@ -5,6 +5,8 @@ using SeleniumExtras.WaitHelpers;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using FormsClipboard = System.Windows.Forms.Clipboard;
+using FormsSendKeys = System.Windows.Forms.SendKeys;
 
 namespace Automate_Whatsapp.Logic
 {
@@ -33,6 +35,19 @@ namespace Automate_Whatsapp.Logic
         private const int WmKeyUp = 0x0101;
         private const int WmClose = 0x0010;
         private const int VkEscape = 0x1B;
+
+        private static class AudioAttachStage
+        {
+            public const string OpenMenu = "AudioAttach.OpenMenu";
+            public const string FindInputBeforeClick = "AudioAttach.FindInputBeforeClick";
+            public const string ClickAudioOption = "AudioAttach.ClickAudioOption";
+            public const string FindInputAfterClick = "AudioAttach.FindInputAfterClick";
+            public const string NativeDialogUpload = "AudioAttach.NativeDialogUpload";
+            public const string WaitPreview = "AudioAttach.WaitPreview";
+            public const string ClickPreviewSend = "AudioAttach.ClickPreviewSend";
+            public const string WaitPreviewClose = "AudioAttach.WaitPreviewClose";
+            public const string Done = "AudioAttach.Done";
+        }
 
         private readonly IWebDriver driver;
         private readonly Action<string> log;
@@ -435,73 +450,202 @@ namespace Automate_Whatsapp.Logic
                 }
                 catch (WebDriverTimeoutException ex)
                 {
-                    return AudioUiFailure("WhatsApp Web: no se encontro el boton de adjuntar audio.", ex);
+                    return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.OpenMenu, "WhatsApp Web: no se encontro el boton de adjuntar audio."), ex);
                 }
 
-                ClickElementSafely(attachBtn);
+                LogAudioStage(AudioAttachStage.OpenMenu, "abriendo menu de adjuntos");
+                try
+                {
+                    ClickElementSafely(attachBtn);
+                }
+                catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
+                {
+                    return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.OpenMenu, "no se pudo hacer click en el boton de adjuntar audio"), ex);
+                }
+
                 bool attachmentMenuOpened = false;
-                IWebElement? audioInput;
-                log("Se evita hacer click en la opcion Audio para no abrir el dialogo nativo de Windows; se buscara un input[type=file] compatible.");
-                if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait) is { } blockedAfterAttach)
+                IWebElement? audioInput = null;
+                bool uploadedThroughNativeDialog = false;
+                string audioFileName = Path.GetFileName(fullAudioPath);
+                if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, stage: AudioAttachStage.OpenMenu) is { } blockedAfterAttach)
                 {
                     return blockedAfterAttach;
                 }
 
+                IWebElement? audioOption = null;
+                LogAudioStage(AudioAttachStage.FindInputBeforeClick, "buscando input de audio antes del click y opcion Audio visible");
                 try
                 {
-                    audioInput = wait.Until(d =>
+                    wait.Until(d =>
                     {
                         attachmentMenuOpened = attachmentMenuOpened || HasAttachmentMenuOpened(d);
-                        return FindAudioFileInput(d);
+                        audioInput = FindAudioFileInput(d);
+                        if (audioInput != null)
+                        {
+                            return true;
+                        }
+
+                        audioOption = FindAudioOption(d);
+                        return audioOption != null;
                     });
                 }
                 catch (WebDriverTimeoutException ex)
                 {
-                    return AudioUiFailure(BuildAudioOptionFailureMessage("no se encontro input[type=file] compatible con audio; no se hizo click en la opcion Audio para evitar el dialogo nativo de Windows", attachmentMenuOpened), ex);
-                }
-
-                if (audioInput == null)
-                {
-                    return AudioUiFailure(BuildAudioOptionFailureMessage("no se encontro input[type=file] compatible con audio; no se hizo click en la opcion Audio para evitar el dialogo nativo de Windows", attachmentMenuOpened));
-                }
-
-                log($"Inputs file detectados antes de adjuntar audio: {GetFileInputsDiagnostics(driver)}");
-                log($"Input file de audio seleccionado: {GetSelectedFileInputDiagnostics(audioInput)}");
-                if (!TrySendFileToInput(audioInput, fullAudioPath, out string inputError))
-                {
-                    if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait) is { } blockedAfterInputFailure)
+                    if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, ex, AudioAttachStage.FindInputBeforeClick) is { } blockedWhileWaitingAudioEntryPoint)
                     {
-                        return blockedAfterInputFailure;
+                        return blockedWhileWaitingAudioEntryPoint;
                     }
 
-                    return AudioUiFailure(BuildAudioOptionFailureMessage($"no se pudo enviar el archivo al input file de audio. {inputError}", attachmentMenuOpened));
+                    return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputBeforeClick, "no se encontro input[type=file] compatible con audio ni opcion Audio visible en el menu de adjuntos"), ex);
                 }
 
-                string audioFileName = Path.GetFileName(fullAudioPath);
-                log("Archivo de audio enviado al input mediante input.SendKeys sin abrir el dialogo nativo de Windows. Esperando preview de adjunto.");
-                if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait) is { } blockedAfterInput)
+                string inputsBeforeAudioClick = GetFileInputsOperationalSummary(driver);
+                if (audioInput == null)
                 {
-                    return blockedAfterInput;
+                    if (audioOption == null)
+                    {
+                        return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputBeforeClick, $"no se encontro input[type=file] compatible con audio ni opcion Audio visible. Inputs antes del click: {inputsBeforeAudioClick}"));
+                    }
+
+                    LogAudioStage(AudioAttachStage.ClickAudioOption, $"No se encontró input de audio antes del click; se intentará activar la opción Audio. {inputsBeforeAudioClick}");
+
+                    try
+                    {
+                        ClickElementSafely(audioOption);
+                    }
+                    catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
+                    {
+                        if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, ex, AudioAttachStage.ClickAudioOption) is { } blockedAfterAudioClickFailure)
+                        {
+                            return blockedAfterAudioClickFailure;
+                        }
+
+                        return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.ClickAudioOption, $"no se pudo hacer click en la opcion Audio. Inputs antes del click: {inputsBeforeAudioClick}"), ex);
+                    }
+
+                    string nativeUploadError = "";
+                    LogAudioStage(AudioAttachStage.FindInputAfterClick, "buscando input de audio despues del click en Audio o dialogo nativo esperado");
+                    try
+                    {
+                        wait.Until(d =>
+                        {
+                            audioInput = FindAudioFileInput(d);
+                            if (audioInput != null)
+                            {
+                                return true;
+                            }
+
+                            if (TryFindNativeFileDialog(out _, out _))
+                            {
+                                LogAudioStage(AudioAttachStage.NativeDialogUpload, "dialogo nativo detectado; cargando archivo por fallback controlado");
+                                if (TryUploadFileThroughNativeDialog(fullAudioPath, out nativeUploadError))
+                                {
+                                    uploadedThroughNativeDialog = true;
+                                }
+
+                                return true;
+                            }
+
+                            return false;
+                        });
+                    }
+                    catch (WebDriverTimeoutException ex)
+                    {
+                        if (TryFindNativeFileDialog(out _, out _))
+                        {
+                            LogAudioStage(AudioAttachStage.NativeDialogUpload, "dialogo nativo detectado tras timeout; cargando archivo por fallback controlado");
+                            if (TryUploadFileThroughNativeDialog(fullAudioPath, out nativeUploadError))
+                            {
+                                uploadedThroughNativeDialog = true;
+                            }
+                            else
+                            {
+                                return NativeDialogUploadFailure(wait, nativeUploadError, ex);
+                            }
+                        }
+                        else
+                        {
+                            string inputsAfterAudioClick = GetFileInputsOperationalSummary(driver);
+                            return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputAfterClick,
+                                "despues de hacer click en Audio no aparecio input[type=file] compatible con audio ni dialogo nativo esperado. " +
+                                $"Inputs antes del click: {inputsBeforeAudioClick}. " +
+                                $"Inputs despues del click: {inputsAfterAudioClick}. " +
+                                $"Sospecha dialogo nativo abierto: {GetNativeFileDialogDiagnostic()}"),
+                                ex);
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(nativeUploadError))
+                    {
+                        return NativeDialogUploadFailure(wait, nativeUploadError);
+                    }
+                }
+
+                if (audioInput == null && !uploadedThroughNativeDialog)
+                {
+                    string inputsAfterAudioClick = GetFileInputsOperationalSummary(driver);
+                    return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputAfterClick,
+                        "no se encontro input[type=file] compatible con audio despues de la estrategia en cascada. " +
+                        $"Inputs antes del click: {inputsBeforeAudioClick}. " +
+                        $"Inputs despues del click: {inputsAfterAudioClick}. " +
+                        $"Sospecha dialogo nativo abierto: {GetNativeFileDialogDiagnostic()}"));
+                }
+
+                if (!uploadedThroughNativeDialog)
+                {
+                    LogAudioStage(AudioAttachStage.FindInputAfterClick, GetFileInputsOperationalSummary(driver));
+                    log($"Input file de audio seleccionado: {GetSelectedFileInputDiagnostics(audioInput!)}");
+                    if (!TrySendFileToInput(audioInput!, fullAudioPath, out string inputError))
+                    {
+                        if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, stage: AudioAttachStage.FindInputAfterClick) is { } blockedAfterInputFailure)
+                        {
+                            return blockedAfterInputFailure;
+                        }
+
+                        return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputAfterClick, $"no se pudo enviar el archivo al input file de audio. {inputError}"));
+                    }
+                }
+                else
+                {
+                    LogAudioStage(AudioAttachStage.NativeDialogUpload, "archivo cargado mediante dialogo nativo controlado");
+                }
+
+                if (!uploadedThroughNativeDialog)
+                {
+                    LogAudioStage(AudioAttachStage.FindInputAfterClick, "archivo enviado al input mediante input.SendKeys");
+                }
+                string attachmentCleanupStage = uploadedThroughNativeDialog ? AudioAttachStage.NativeDialogUpload : AudioAttachStage.FindInputAfterClick;
+                if (TryFindNativeFileDialog(out _, out _))
+                {
+                    LogAudioStage(attachmentCleanupStage, "dialogo nativo pendiente despues de adjuntar; intentando cerrar antes de esperar preview");
+                    if (!TryCleanupNativeFileDialogAfterAttachmentAttempt(out string attachmentCleanupDiagnostic))
+                    {
+                        return AudioUiFailure(BuildAudioStageFailureMessage(attachmentCleanupStage, $"no se pudo cerrar el dialogo nativo pendiente despues de adjuntar. {attachmentCleanupDiagnostic}"));
+                    }
+
+                    log(attachmentCleanupDiagnostic);
                 }
 
                 IWebElement attachmentPreview;
+                LogAudioStage(AudioAttachStage.WaitPreview, "esperando preview de adjunto");
                 try
                 {
                     attachmentPreview = WaitForAttachmentPreview(wait, audioFileName);
                 }
                 catch (WebDriverTimeoutException ex)
                 {
-                    if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, ex) is { } blockedWithoutPreview)
+                    if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, ex, AudioAttachStage.WaitPreview) is { } blockedWithoutPreview)
                     {
                         return blockedWithoutPreview;
                     }
 
-                    return AudioUiFailure("El archivo fue enviado al input, pero WhatsApp no mostró preview de adjunto.", ex);
+                    return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.WaitPreview, "El archivo fue enviado al input, pero WhatsApp no mostró preview de adjunto."), ex);
                 }
 
-                log($"Preview de adjunto detectado para audio: {GetAttachmentPreviewDiagnostics(attachmentPreview, audioFileName)}");
+                LogAudioStage(AudioAttachStage.WaitPreview, $"preview detectado: {GetAttachmentPreviewDiagnostics(attachmentPreview, audioFileName)}");
 
                 IWebElement previewSendButton;
+                LogAudioStage(AudioAttachStage.ClickPreviewSend, "buscando boton enviar dentro del preview");
                 try
                 {
                     previewSendButton = wait.Until(d =>
@@ -514,49 +658,69 @@ namespace Automate_Whatsapp.Logic
                 }
                 catch (WebDriverTimeoutException ex)
                 {
-                    if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, ex) is { } blockedWithoutPreviewSend)
+                    if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, ex, AudioAttachStage.ClickPreviewSend) is { } blockedWithoutPreviewSend)
                     {
                         return blockedWithoutPreviewSend;
                     }
 
-                    return AudioUiFailure("WhatsApp mostró preview de adjunto, pero no se encontró un botón enviar dentro del preview. No se hará click en botones globales.", ex);
+                    return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.ClickPreviewSend, "WhatsApp mostró preview de adjunto, pero no se encontró un botón enviar dentro del preview. No se hará click en botones globales."), ex);
                 }
 
-                ClickElementSafely(previewSendButton);
-                log("Boton enviar del preview de adjunto clickeado. Esperando cierre del preview.");
+                try
+                {
+                    ClickElementSafely(previewSendButton);
+                }
+                catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
+                {
+                    return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.ClickPreviewSend, "no se pudo hacer click en el boton enviar del preview"), ex);
+                }
 
+                LogAudioStage(AudioAttachStage.ClickPreviewSend, "boton enviar del preview clickeado");
+
+                LogAudioStage(AudioAttachStage.WaitPreviewClose, "esperando cierre del preview");
                 try
                 {
                     if (!VerifyAudioSendCompleted(wait, audioFileName))
                     {
-                        return AudioUiFailure("WhatsApp no confirmó el cierre del preview de adjunto despues de hacer click en enviar; no se marcara el audio como enviado.");
+                        return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.WaitPreviewClose, "WhatsApp no confirmó el cierre del preview de adjunto despues de hacer click en enviar; no se marcara el audio como enviado."));
                     }
                 }
                 catch (WebDriverTimeoutException ex)
                 {
-                    if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, ex) is { } blockedAfterPreviewSend)
+                    if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, ex, AudioAttachStage.WaitPreviewClose) is { } blockedAfterPreviewSend)
                     {
                         return blockedAfterPreviewSend;
                     }
 
-                    return AudioUiFailure("WhatsApp no cerró el preview de adjunto despues de hacer click en enviar; no se marcara el audio como enviado.", ex);
+                    return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.WaitPreviewClose, "WhatsApp no cerró el preview de adjunto despues de hacer click en enviar; no se marcara el audio como enviado."), ex);
                 }
 
-                if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait) is { } blockedBeforeSuccess)
+                log("Audio enviado; verificando limpieza de diálogo nativo de archivo.");
+                if (TryCleanupNativeFileDialogAfterAudioSend(out string finalCleanupDiagnostic))
                 {
-                    return blockedBeforeSuccess;
+                    string finalCleanupLog = finalCleanupDiagnostic == "No se detectó diálogo nativo pendiente."
+                        ? "No se detectó diálogo nativo pendiente después del envío."
+                        : finalCleanupDiagnostic;
+                    log(finalCleanupLog);
+                }
+                else
+                {
+                    log($"Advertencia: el audio fue confirmado como enviado, pero no se pudo cerrar el diálogo nativo. {finalCleanupDiagnostic}");
                 }
 
-                log("Audio adjuntado y enviado correctamente en WhatsApp Web.");
+                LogAudioStage(AudioAttachStage.Done, "audio adjuntado y enviado correctamente en WhatsApp Web");
                 return WhatsAppSendResult.Ok("Audio enviado correctamente.");
             }
             catch (WebDriverException ex) when (IsBrowserUnavailableException(ex))
             {
-                return Failure(WhatsAppHealthStatus.BrowserUnavailable, "El navegador o la sesion de WebDriver no esta disponible.", ex);
+                return Failure(
+                    WhatsAppHealthStatus.BrowserUnavailable,
+                    BuildAudioStageFailureMessage(AudioAttachStage.Done, "El navegador o la sesion de WebDriver no esta disponible."),
+                    ex);
             }
             catch (WebDriverException ex)
             {
-                if (attachmentWait != null && EnsureWhatsAppInteractableAfterAttachmentAttempt(attachmentWait, ex) is { } blockedByNativeDialog)
+                if (attachmentWait != null && EnsureWhatsAppInteractableAfterAttachmentAttempt(attachmentWait, ex, AudioAttachStage.Done) is { } blockedByNativeDialog)
                 {
                     return blockedByNativeDialog;
                 }
@@ -564,10 +728,15 @@ namespace Automate_Whatsapp.Logic
                 var issue = GetHealthIssue();
                 if (!issue.IsReady)
                 {
-                    return WhatsAppSendResult.FromIssue(issue, ex);
+                    string issueMessage = BuildAudioStageFailureMessage(
+                        AudioAttachStage.Done,
+                        "WhatsApp dejo de estar listo durante el adjunto o envio de audio. " +
+                        $"Estado: {issue.Status}. {issue.Message}");
+                    log(issueMessage);
+                    return WhatsAppSendResult.Failure(issue.Status, issueMessage, issue.IsGlobalFailure, ex);
                 }
 
-                return AudioUiFailure("WhatsApp Web produjo un error de WebDriver al adjuntar o enviar el audio.", ex);
+                return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.Done, "WhatsApp Web produjo un error de WebDriver al adjuntar o enviar el audio."), ex);
             }
             catch (Exception ex)
             {
@@ -852,6 +1021,43 @@ namespace Automate_Whatsapp.Logic
             return $"inputs file detectados: {inputs.Count}; {string.Join(" | ", details)}";
         }
 
+        private static string GetFileInputsOperationalSummary(ISearchContext searchContext)
+        {
+            IReadOnlyCollection<IWebElement> inputs;
+            try
+            {
+                inputs = searchContext.FindElements(By.CssSelector(Selectors.FileInputCss));
+            }
+            catch (WebDriverException ex)
+            {
+                return $"inputs file detectados: no disponible; accepts detectados: no disponible; error: {SummarizeExceptionMessage(ex)}";
+            }
+
+            if (inputs.Count == 0)
+            {
+                return "inputs file detectados: 0; accepts detectados: (ninguno)";
+            }
+
+            var accepts = new List<string>();
+            foreach (var input in inputs)
+            {
+                try
+                {
+                    accepts.Add(FormatDiagnosticValue(input.GetAttribute("accept")));
+                }
+                catch (StaleElementReferenceException)
+                {
+                    accepts.Add("(stale)");
+                }
+                catch (WebDriverException)
+                {
+                    accepts.Add("(no disponible)");
+                }
+            }
+
+            return $"inputs file detectados: {inputs.Count}; accepts detectados: {string.Join(", ", accepts)}";
+        }
+
         private static bool IsAudioAccept(string? accept)
         {
             return !string.IsNullOrWhiteSpace(accept)
@@ -977,7 +1183,10 @@ namespace Automate_Whatsapp.Logic
             return true;
         }
 
-        private WhatsAppSendResult? EnsureWhatsAppInteractableAfterAttachmentAttempt(WebDriverWait wait, Exception? attachmentException = null)
+        private WhatsAppSendResult? EnsureWhatsAppInteractableAfterAttachmentAttempt(
+            WebDriverWait wait,
+            Exception? attachmentException = null,
+            string stage = AudioAttachStage.NativeDialogUpload)
         {
             bool nativeDialogDetected = TryFindNativeFileDialog(out _, out string dialogTitle);
             if (!nativeDialogDetected && !IsPotentialNativeFileDialogBlock(attachmentException))
@@ -990,7 +1199,7 @@ namespace Automate_Whatsapp.Logic
                 var issue = GetHealthIssue();
                 if (issue.IsReady)
                 {
-                    const string recoveredMessage = "Se detectó posible diálogo nativo de archivo abierto. Se cerró y se marcó el envío de audio como fallido.";
+                    string recoveredMessage = BuildAudioStageFailureMessage(stage, "Se detectó posible diálogo nativo de archivo abierto. Se cerró y se marcó el envío de audio como fallido.");
                     log(recoveredMessage);
                     return WhatsAppSendResult.Failure(
                         WhatsAppHealthStatus.WhatsAppAttachmentFailed,
@@ -999,20 +1208,22 @@ namespace Automate_Whatsapp.Logic
                         attachmentException);
                 }
 
-                string notReadyAfterDismissMessage =
+                string notReadyAfterDismissMessage = BuildAudioStageFailureMessage(
+                    stage,
                     "Se detectó posible diálogo nativo de archivo abierto y se intentó cerrarlo, " +
-                    $"pero WhatsApp no volvió a estar listo. Estado: {issue.Status}. {issue.Message}";
+                    $"pero WhatsApp no volvió a estar listo. Estado: {issue.Status}. {issue.Message}");
                 log(notReadyAfterDismissMessage);
-                return WhatsAppSendResult.FromIssue(issue, attachmentException);
+                return WhatsAppSendResult.Failure(issue.Status, notReadyAfterDismissMessage, issue.IsGlobalFailure, attachmentException ?? issue.Exception);
             }
 
             string stillOpenTitle = TryFindNativeFileDialog(out _, out string currentDialogTitle)
                 ? currentDialogTitle
                 : dialogTitle;
-            string unrecoveredMessage =
+            string unrecoveredMessage = BuildAudioStageFailureMessage(
+                stage,
                 "Se detectó posible diálogo nativo de archivo abierto durante el adjunto de audio, " +
                 "pero no se pudo confirmar su cierre ni recuperar WhatsApp Web. " +
-                $"Título detectado: {FormatDiagnosticValue(stillOpenTitle)}. Se detiene la corrida para evitar continuar en estado bloqueado.";
+                $"Título detectado: {FormatDiagnosticValue(stillOpenTitle)}. Se detiene la corrida para evitar continuar en estado bloqueado.");
             log(unrecoveredMessage);
 
             return WhatsAppSendResult.Failure(
@@ -1050,6 +1261,221 @@ namespace Automate_Whatsapp.Logic
             PostMessage(dialogHandle, WmClose, IntPtr.Zero, IntPtr.Zero);
             Thread.Sleep(500);
             return !TryFindNativeFileDialog(out _, out _);
+        }
+
+        private bool TryCleanupNativeFileDialogAfterAttachmentAttempt(out string diagnostic)
+        {
+            return TryCleanupNativeFileDialog("despues de adjuntar", out diagnostic);
+        }
+
+        private bool TryCleanupNativeFileDialogAfterAudioSend(out string diagnostic)
+        {
+            return TryCleanupNativeFileDialog("despues del envio", out diagnostic);
+        }
+
+        private bool TryCleanupNativeFileDialog(string context, out string diagnostic)
+        {
+            diagnostic = "No se detectó diálogo nativo pendiente.";
+
+            if (!TryFindNativeFileDialog(out IntPtr dialogHandle, out string dialogTitle))
+            {
+                return true;
+            }
+
+            if (context == "despues del envio")
+            {
+                log("Diálogo nativo de archivo detectado después del envío; intentando cerrar.");
+            }
+            else
+            {
+                log("Diálogo nativo de archivo detectado después de adjuntar; intentando cerrar.");
+            }
+
+            try
+            {
+                SetForegroundWindow(dialogHandle);
+                PostEscapeToWindow(dialogHandle);
+                Thread.Sleep(1000);
+
+                if (!TryFindNativeFileDialog(out _, out _))
+                {
+                    diagnostic = "Diálogo nativo cerrado con Escape.";
+                    return true;
+                }
+
+                PostMessage(dialogHandle, WmClose, IntPtr.Zero, IntPtr.Zero);
+                Thread.Sleep(1000);
+
+                if (!TryFindNativeFileDialog(out _, out _))
+                {
+                    diagnostic = "Diálogo nativo cerrado con WM_CLOSE.";
+                    return true;
+                }
+
+                diagnostic = $"No se pudo cerrar el diálogo nativo {context}. Titulo detectado: {FormatDiagnosticValue(dialogTitle)}.";
+                return false;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ExternalException)
+            {
+                diagnostic = $"No se pudo cerrar el diálogo nativo {context}. Error: {SummarizeExceptionMessage(ex)}";
+                return false;
+            }
+        }
+
+        private bool TryUploadFileThroughNativeDialog(string fullAudioPath, out string error)
+        {
+            error = "";
+
+            if (!TryFindNativeFileDialog(out IntPtr dialogHandle, out string dialogTitle))
+            {
+                error = "No se detecto el dialogo nativo de archivo esperado.";
+                return false;
+            }
+
+            try
+            {
+                SetForegroundWindow(dialogHandle);
+                Thread.Sleep(250);
+
+                if (!TryPasteFilePathAndSubmit(fullAudioPath, out string pasteError))
+                {
+                    error = pasteError;
+                    return false;
+                }
+
+                if (!WaitForNativeFileDialogToClose(dialogHandle, TimeSpan.FromSeconds(8)))
+                {
+                    error = $"El dialogo nativo de archivo no se cerro despues de pegar la ruta y presionar Enter. Titulo: {FormatDiagnosticValue(dialogTitle)}.";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ExternalException or ThreadStateException)
+            {
+                error = $"No se pudo cargar el archivo en el dialogo nativo. Error: {SummarizeExceptionMessage(ex)}";
+                return false;
+            }
+        }
+
+        private WhatsAppSendResult NativeDialogUploadFailure(WebDriverWait wait, string error, Exception? exception = null)
+        {
+            string message = BuildAudioStageFailureMessage(
+                AudioAttachStage.NativeDialogUpload,
+                "WhatsApp abrió el diálogo nativo de archivo para adjuntar audio, " +
+                $"pero no se pudo cargar el archivo de forma controlada. {error}");
+
+            bool dismissed = !TryFindNativeFileDialog(out _, out _) || TryDismissNativeFileDialog();
+            if (dismissed)
+            {
+                if (WaitForWhatsAppInteractable(wait))
+                {
+                    return AudioUiFailure(message, exception);
+                }
+
+                var issue = GetHealthIssue();
+                if (issue.IsReady)
+                {
+                    return AudioUiFailure(message, exception);
+                }
+
+                string notReadyMessage = BuildAudioStageFailureMessage(
+                    AudioAttachStage.NativeDialogUpload,
+                    "WhatsApp no volvió a estar listo despues del fallo del dialogo nativo. " +
+                    $"Estado: {issue.Status}. {issue.Message}");
+                log(notReadyMessage);
+                return WhatsAppSendResult.Failure(issue.Status, notReadyMessage, issue.IsGlobalFailure, exception ?? issue.Exception);
+            }
+
+            string unrecoveredMessage = BuildAudioStageFailureMessage(
+                AudioAttachStage.NativeDialogUpload,
+                "WhatsApp abrió el diálogo nativo de archivo para adjuntar audio, " +
+                $"pero no se pudo cargar el archivo de forma controlada. {error} " +
+                "El dialogo nativo sigue abierto; se detiene la corrida para evitar continuar en estado bloqueado.");
+            log(unrecoveredMessage);
+            return WhatsAppSendResult.Failure(
+                WhatsAppHealthStatus.WhatsAppNotReady,
+                unrecoveredMessage,
+                true,
+                exception);
+        }
+
+        private static bool TryPasteFilePathAndSubmit(string fullAudioPath, out string error)
+        {
+            error = "";
+            Exception? failure = null;
+
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    SetClipboardTextWithRetry(fullAudioPath);
+                    FormsSendKeys.SendWait("^v");
+                    FormsSendKeys.SendWait("{ENTER}");
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                }
+            });
+
+            thread.IsBackground = true;
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+
+            if (!thread.Join(TimeSpan.FromSeconds(5)))
+            {
+                error = "No se pudo pegar la ruta del archivo en el dialogo nativo dentro del timeout.";
+                return false;
+            }
+
+            if (failure != null)
+            {
+                error = $"No se pudo pegar la ruta del archivo en el dialogo nativo. Error: {SummarizeExceptionMessage(failure)}";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void SetClipboardTextWithRetry(string text)
+        {
+            const int maxAttempts = 3;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    FormsClipboard.SetText(text);
+                    return;
+                }
+                catch (ExternalException) when (attempt < maxAttempts)
+                {
+                    Thread.Sleep(100);
+                }
+            }
+
+            FormsClipboard.SetText(text);
+        }
+
+        private static bool WaitForNativeFileDialogToClose(IntPtr originalDialogHandle, TimeSpan timeout)
+        {
+            DateTime deadline = DateTime.UtcNow.Add(timeout);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (!TryFindNativeFileDialog(out IntPtr currentDialogHandle, out _))
+                {
+                    return true;
+                }
+
+                if (currentDialogHandle != originalDialogHandle)
+                {
+                    originalDialogHandle = currentDialogHandle;
+                }
+
+                Thread.Sleep(100);
+            }
+
+            return false;
         }
 
         private static void PostEscapeToWindow(IntPtr windowHandle)
@@ -1098,6 +1524,13 @@ namespace Automate_Whatsapp.Logic
             dialogHandle = foundHandle;
             title = foundTitle;
             return dialogHandle != IntPtr.Zero;
+        }
+
+        private static string GetNativeFileDialogDiagnostic()
+        {
+            return TryFindNativeFileDialog(out _, out string title)
+                ? $"si, titulo={FormatDiagnosticValue(title)}"
+                : "no";
         }
 
         private static bool IsLikelyBrowserNativeDialog(IntPtr windowHandle)
@@ -1514,6 +1947,49 @@ namespace Automate_Whatsapp.Logic
                 : BuildTextPreview(value, 160);
         }
 
+        private void LogAudioStage(string stage, string detail)
+        {
+            log($"{stage}: {detail}.");
+        }
+
+        private string BuildAudioStageFailureMessage(string stage, string reason)
+        {
+            return $"{stage}: {reason}. {BuildAudioAttachDiagnostics()}";
+        }
+
+        private string BuildAudioAttachDiagnostics()
+        {
+            string inputsSummary = GetFileInputsOperationalSummary(driver);
+            string audioTextDetected = FormatDiagnosticFlag(ReadDiagnosticFlag(() => HasAudioTextSignal(driver)));
+            string audioIconDetected = FormatDiagnosticFlag(ReadDiagnosticFlag(() => HasAudioHeadphonesIconSignal(driver)));
+            string nativeDialogDetected = GetNativeFileDialogDiagnostic();
+            string healthSummary = ReadWhatsAppHealthSummary();
+
+            return "Diagnostico audio: " +
+                $"{inputsSummary}; " +
+                $"texto Audio detectado: {audioTextDetected}; " +
+                $"icono Audio detectado: {audioIconDetected}; " +
+                $"dialogo nativo detectado: {nativeDialogDetected}; " +
+                $"health: {healthSummary}.";
+        }
+
+        private string ReadWhatsAppHealthSummary()
+        {
+            try
+            {
+                WhatsAppHealthIssue issue = GetHealthIssue();
+                return $"{issue.Status} ({BuildTextPreview(issue.Message, 140)})";
+            }
+            catch (WebDriverException ex)
+            {
+                return $"no disponible ({SummarizeExceptionMessage(ex)})";
+            }
+            catch (Exception ex)
+            {
+                return $"no disponible ({SummarizeExceptionMessage(ex)})";
+            }
+        }
+
         private string BuildOpenChatTimeoutDiagnostic()
         {
             string currentUrl = ReadDiagnosticText(() => driver.Url);
@@ -1694,14 +2170,17 @@ namespace Automate_Whatsapp.Logic
         private WhatsAppSendResult AudioUiFailure(string message, Exception? exception = null)
         {
             var issue = GetHealthIssue();
-            if (!issue.IsReady)
-            {
-                return WhatsAppSendResult.FromIssue(issue, exception);
-            }
-
             string resultMessage = message.StartsWith("Fallo UI al adjuntar audio.", StringComparison.OrdinalIgnoreCase)
                 ? message
                 : $"Fallo UI al adjuntar audio. {message}";
+
+            if (!issue.IsReady)
+            {
+                string notReadyMessage = $"{resultMessage} Estado WhatsApp: {issue.Status}. {issue.Message}";
+                log(notReadyMessage);
+                return WhatsAppSendResult.Failure(issue.Status, notReadyMessage, issue.IsGlobalFailure, exception ?? issue.Exception);
+            }
+
             log(resultMessage);
             return WhatsAppSendResult.Failure(WhatsAppHealthStatus.WhatsAppAttachmentFailed, resultMessage, false, exception);
         }
