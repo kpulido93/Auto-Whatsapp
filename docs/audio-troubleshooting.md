@@ -15,6 +15,21 @@ Para enviar audios, configura ElevenLabs desde el panel **Configuracion**, secci
 
 Usa **Probar configuracion** para validar que la API key y el Voice ID existen antes de ejecutar una corrida con audios. Esta prueba valida configuracion minima, guarda la configuracion localmente y no genera audio ni llama a la API.
 
+## Configurar ElevenLabs en la app
+
+1. Abre el panel **Configuracion**, seccion **ElevenLabs**.
+2. Pega la API key en **API Key**. La app la guarda cifrada para el usuario actual.
+3. Pega el identificador de voz en **Voice ID**. No hay Voice ID por defecto.
+4. Pulsa **Guardar configuracion** o **Probar configuracion**. Ambas acciones dejan la configuracion guardada localmente para los envios de audio; la prueba no llama a la API ni genera audio.
+
+Si ves este error:
+
+```text
+Configuracion ElevenLabs incompleta o invalida. Falta ELEVENLABS_API_KEY. Falta ELEVENLABS_VOICE_ID.
+```
+
+la app no encontro una configuracion local guardada ni variables de entorno con API key y Voice ID. Guarda esos dos campos desde la seccion **ElevenLabs** antes de iniciar una corrida con audios. La configuracion que usan los envios es la guardada en `%AppData%/AutoWhatsApp/elevenlabs-settings.json`; la API key no se guarda en texto plano.
+
 ## Validar `toAudio`
 
 En el Excel, la columna `toAudio` controla si el mensaje se envia como audio.

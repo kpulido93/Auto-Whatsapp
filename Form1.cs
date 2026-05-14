@@ -46,6 +46,7 @@ namespace Automate_Whatsapp
         private const float ExcelPreviewCollapsedHeight = 0F;
         private const float ExcelPreviewExpandedHeight = 184F;
         private const string ApplicationIconResourceName = "Resources.icon.ico";
+        private const string ElevenLabsSavedSettingsTooltip = "La configuración usada en envíos es la guardada localmente.";
 
         private enum SendStartTrigger
         {
@@ -479,9 +480,29 @@ namespace Automate_Whatsapp
         {
             try
             {
-                ApplyElevenLabsSettingsToUi(ElevenLabsSettingsStore.LoadOrEnvironment());
+                bool loadedLocalSettings = ElevenLabsSettingsStore.TryLoad(out var settings);
+                ApplyElevenLabsSettingsToUi(settings);
                 uiToolTip.SetToolTip(txtElevenLabsApiKey, "La API key se muestra enmascarada y se guarda cifrada para el usuario actual.");
-                uiToolTip.SetToolTip(lblElevenLabsStatus, ElevenLabsSettingsStore.GetConfigPath());
+
+                if (settings.Validate().Count == 0)
+                {
+                    if (loadedLocalSettings)
+                    {
+                        MarkElevenLabsSavedLocally();
+                    }
+                    else
+                    {
+                        lblElevenLabsStatus.Text = "Configurado por entorno";
+                        uiToolTip.SetToolTip(
+                            lblElevenLabsStatus,
+                            "Los envíos de audio usan variables de entorno porque no hay configuración local guardada."
+                            + Environment.NewLine
+                            + "Pulsa Guardar configuración o Probar configuración para guardar estos valores localmente."
+                            + Environment.NewLine
+                            + $"Ruta local: {ElevenLabsSettingsStore.GetConfigPath()}");
+                        UpdateConfigurationSummary();
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -535,7 +556,7 @@ namespace Automate_Whatsapp
 
             try
             {
-                SaveElevenLabsSettings(settings, $"Configuración ElevenLabs guardada en {ElevenLabsSettingsStore.GetConfigPath()}.");
+                SaveElevenLabsSettings(settings, "Configuración ElevenLabs guardada localmente. Los envíos de audio usarán estos valores.");
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
             {
@@ -565,8 +586,20 @@ namespace Automate_Whatsapp
         private void SaveElevenLabsSettings(ElevenLabsSettings settings, string successLogMessage)
         {
             ElevenLabsSettingsStore.Save(settings);
-            UpdateElevenLabsStatus(settings);
+            MarkElevenLabsSavedLocally();
             Log(successLogMessage);
+        }
+
+        private void MarkElevenLabsSavedLocally()
+        {
+            lblElevenLabsStatus.Text = "Configurado y guardado";
+            lblElevenLabsStatus.ForeColor = Color.FromArgb(21, 128, 61);
+            uiToolTip.SetToolTip(
+                lblElevenLabsStatus,
+                ElevenLabsSavedSettingsTooltip
+                + Environment.NewLine
+                + $"Ruta local: {ElevenLabsSettingsStore.GetConfigPath()}");
+            UpdateConfigurationSummary();
         }
 
         private void ReportElevenLabsSettingsSaveError(Exception ex)
@@ -608,7 +641,11 @@ namespace Automate_Whatsapp
             {
                 lblElevenLabsStatus.Text = "Configurado";
                 lblElevenLabsStatus.ForeColor = Color.FromArgb(21, 128, 61);
-                uiToolTip.SetToolTip(lblElevenLabsStatus, "Configuración ElevenLabs válida.");
+                uiToolTip.SetToolTip(
+                    lblElevenLabsStatus,
+                    "Configuración ElevenLabs válida. Pulsa Guardar configuración o Probar configuración para guardarla localmente antes de enviar audios."
+                    + Environment.NewLine
+                    + $"Ruta local: {ElevenLabsSettingsStore.GetConfigPath()}");
             }
             else if (string.IsNullOrWhiteSpace(settings.ApiKey) || string.IsNullOrWhiteSpace(settings.VoiceId))
             {
