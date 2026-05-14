@@ -10,12 +10,14 @@ namespace Automate_Whatsapp.Logic
         private static readonly TimeSpan DefaultWaitTimeout = TimeSpan.FromSeconds(15);
 
         private readonly IWebDriver driver;
+        private readonly Action<string> log;
 
         public WhatsAppLine Line { get; }
 
-        public WhatsAppSender(WhatsAppLine line)
+        public WhatsAppSender(WhatsAppLine line, Action<string>? log = null)
         {
             Line = line ?? throw new ArgumentNullException(nameof(line));
+            this.log = log ?? (_ => { });
 
             ChromeOptions options = new ChromeOptions();
             string fullPath = Path.GetFullPath(Line.SessionPath);
@@ -213,14 +215,32 @@ namespace Automate_Whatsapp.Logic
                     return WhatsAppSendResult.FromIssue(health);
                 }
 
-                string fullAudioPath = Path.GetFullPath(audioPath);
+                if (string.IsNullOrWhiteSpace(audioPath))
+                {
+                    return AudioFileFailure("La ruta del archivo de audio esta vacia. Revisa la generacion TTS antes de adjuntar.");
+                }
+
+                string fullAudioPath;
+                try
+                {
+                    fullAudioPath = Path.GetFullPath(audioPath);
+                }
+                catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+                {
+                    return AudioFileFailure($"La ruta del archivo de audio no es valida: {audioPath}.", ex);
+                }
                 if (!File.Exists(fullAudioPath))
                 {
-                    return WhatsAppSendResult.Failure(
-                        WhatsAppHealthStatus.UnknownError,
-                        $"No existe el archivo de audio: {fullAudioPath}",
-                        false);
+                    return AudioFileFailure($"No existe el archivo de audio para adjuntar: {fullAudioPath}. Revisa la generacion TTS antes de enviar.");
                 }
+
+                var audioFile = new FileInfo(fullAudioPath);
+                if (audioFile.Length <= 0)
+                {
+                    return AudioFileFailure($"El archivo de audio para adjuntar esta vacio: {fullAudioPath}. Genera el audio nuevamente antes de enviar.");
+                }
+
+                log($"Adjuntando audio en WhatsApp Web: {fullAudioPath} ({audioFile.Length} bytes).");
 
                 WebDriverWait wait = new WebDriverWait(driver, DefaultWaitTimeout);
 
@@ -255,7 +275,7 @@ namespace Automate_Whatsapp.Logic
                 }
                 catch (WebDriverTimeoutException ex)
                 {
-                    return UiFailure("No se encontro el boton de adjuntar audio.", ex);
+                    return AudioUiFailure("WhatsApp Web: no se encontro el boton de adjuntar audio.", ex);
                 }
 
                 attachBtn.Click();
@@ -268,7 +288,7 @@ namespace Automate_Whatsapp.Logic
                 }
                 catch (WebDriverTimeoutException ex)
                 {
-                    return UiFailure("No se encontro la opcion Audio en el menu de adjuntos.", ex);
+                    return AudioUiFailure("WhatsApp Web: no se encontro la opcion Audio en el menu de adjuntos.", ex);
                 }
 
                 audioOption.Click();
@@ -280,12 +300,12 @@ namespace Automate_Whatsapp.Logic
                 }
                 catch (WebDriverTimeoutException ex)
                 {
-                    return UiFailure("No se encontro input para adjuntar audio.", ex);
+                    return AudioUiFailure("WhatsApp Web: no se encontro el input file para adjuntar audio.", ex);
                 }
 
                 if (audioInput == null)
                 {
-                    return UiFailure("No se encontro input para adjuntar audio.");
+                    return AudioUiFailure("WhatsApp Web: no se encontro el input file para adjuntar audio.");
                 }
 
                 audioInput.SendKeys(fullAudioPath);
@@ -298,12 +318,13 @@ namespace Automate_Whatsapp.Logic
                 }
                 catch (WebDriverTimeoutException ex)
                 {
-                    return UiFailure("No se encontro el boton de enviar audio.", ex);
+                    return AudioUiFailure("WhatsApp Web: no se encontro el boton enviar despues de adjuntar audio.", ex);
                 }
 
                 sendBtn.Click();
 
                 Thread.Sleep(2000);
+                log("Audio adjuntado y enviado correctamente en WhatsApp Web.");
                 return WhatsAppSendResult.Ok("Audio enviado correctamente.");
             }
             catch (WebDriverException ex) when (IsBrowserUnavailableException(ex))
@@ -313,9 +334,14 @@ namespace Automate_Whatsapp.Logic
             catch (WebDriverException ex)
             {
                 var issue = GetHealthIssue();
-                return issue.IsReady
-                    ? Failure(WhatsAppHealthStatus.UnknownError, "Error de WebDriver al enviar el audio.", ex)
-                    : WhatsAppSendResult.FromIssue(issue, ex);
+                if (!issue.IsReady)
+                {
+                    return WhatsAppSendResult.FromIssue(issue, ex);
+                }
+
+                string message = "WhatsApp Web produjo un error de WebDriver al adjuntar o enviar el audio.";
+                log(message);
+                return WhatsAppSendResult.Failure(WhatsAppHealthStatus.WhatsAppAttachmentFailed, message, true, ex);
             }
             catch (Exception ex)
             {
@@ -575,12 +601,30 @@ namespace Automate_Whatsapp.Logic
                 : WhatsAppSendResult.FromIssue(issue, exception);
         }
 
+        private WhatsAppSendResult AudioFileFailure(string message, Exception? exception = null)
+        {
+            log(message);
+            return WhatsAppSendResult.Failure(WhatsAppHealthStatus.AudioFileInvalid, message, false, exception);
+        }
+
+        private WhatsAppSendResult AudioUiFailure(string message, Exception? exception = null)
+        {
+            log(message);
+
+            var issue = GetHealthIssue();
+            return issue.IsReady
+                ? WhatsAppSendResult.Failure(WhatsAppHealthStatus.WhatsAppAttachmentFailed, message, true, exception)
+                : WhatsAppSendResult.FromIssue(issue, exception);
+        }
+
         private static bool IsGlobalFailure(WhatsAppHealthStatus status)
         {
             return status switch
             {
                 WhatsAppHealthStatus.Ready => false,
                 WhatsAppHealthStatus.InvalidDestinationNumber => false,
+                WhatsAppHealthStatus.TextToSpeechFailed => false,
+                WhatsAppHealthStatus.AudioFileInvalid => false,
                 _ => true
             };
         }

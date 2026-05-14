@@ -42,15 +42,22 @@ namespace Automate_Whatsapp
         private const int ResponsiveLayoutMinimumHeightWithoutPreview = 560;
         private const int ResponsiveLayoutMinimumHeightWithPreview = 740;
         private const float ConfigurationCollapsedHeight = 0F;
-        private const float ConfigurationExpandedHeight = 236F;
+        private const float ConfigurationExpandedHeight = 420F;
         private const float ExcelPreviewCollapsedHeight = 0F;
         private const float ExcelPreviewExpandedHeight = 184F;
         private const string ApplicationIconResourceName = "Resources.icon.ico";
+
+        private enum SendStartTrigger
+        {
+            ImmediateClick,
+            ScheduledTimer
+        }
 
         public Form1()
         {
             InitializeComponent();
             ApplyApplicationIcon();
+            LoadElevenLabsSettingsIntoUi();
             ApplyConfigurationVisibility();
             ApplyExcelPreviewVisibility();
             AdjustResponsiveLayout();
@@ -189,6 +196,11 @@ namespace Automate_Whatsapp
             btnSelectRunLines_Click(sender, e);
         }
 
+        private void elevenLabsToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            ShowElevenLabsConfiguration();
+        }
+
         private void mostrarVistaPreviaExcelToolStripMenuItem_Click(object sender, EventArgs e)
         {
             if (chkShowExcelPreview.Checked != mostrarVistaPreviaExcelToolStripMenuItem.Checked)
@@ -211,6 +223,7 @@ namespace Automate_Whatsapp
             cambiarAutomaticamenteSiFallaToolStripMenuItem.Enabled = chkAutoLineFallback.Enabled;
             cambiarAutomaticamenteSiFallaToolStripMenuItem.Checked = chkAutoLineFallback.Checked;
             seleccionarLineasToolStripMenuItem.Enabled = btnSelectRunLines.Enabled;
+            elevenLabsToolStripMenuItem.Enabled = btnTestElevenLabsSettings.Enabled;
             mostrarVistaPreviaExcelToolStripMenuItem.Enabled = chkShowExcelPreview.Enabled;
             mostrarVistaPreviaExcelToolStripMenuItem.Checked = chkShowExcelPreview.Checked;
         }
@@ -462,6 +475,163 @@ namespace Automate_Whatsapp
             UpdateConfigurationSummary();
         }
 
+        private void LoadElevenLabsSettingsIntoUi()
+        {
+            try
+            {
+                ApplyElevenLabsSettingsToUi(ElevenLabsSettingsStore.LoadOrEnvironment());
+                uiToolTip.SetToolTip(txtElevenLabsApiKey, "La API key se muestra enmascarada y se guarda cifrada para el usuario actual.");
+                uiToolTip.SetToolTip(lblElevenLabsStatus, ElevenLabsSettingsStore.GetConfigPath());
+            }
+            catch (Exception ex)
+            {
+                ApplyElevenLabsSettingsToUi(ElevenLabsSettings.FromEnvironment());
+                lblElevenLabsStatus.Text = "Error de validación";
+                lblElevenLabsStatus.ForeColor = Color.FromArgb(185, 28, 28);
+                uiToolTip.SetToolTip(lblElevenLabsStatus, ex.Message);
+                Log($"No se pudo cargar la configuración local de ElevenLabs. Se usarán variables de entorno. Detalle: {ex.Message}");
+            }
+        }
+
+        private void ShowElevenLabsConfiguration()
+        {
+            if (!isConfigurationExpanded)
+            {
+                isConfigurationExpanded = true;
+                ApplyConfigurationVisibility();
+            }
+
+            BeginInvoke(new Action(() =>
+            {
+                mainScrollPanel.ScrollControlIntoView(grpElevenLabs);
+                txtElevenLabsApiKey.Focus();
+            }));
+        }
+
+        private void ApplyElevenLabsSettingsToUi(ElevenLabsSettings settings)
+        {
+            txtElevenLabsApiKey.Text = settings.ApiKey;
+            txtElevenLabsVoiceId.Text = settings.VoiceId;
+            txtElevenLabsModelId.Text = settings.ModelId;
+            txtElevenLabsOutputFormat.Text = settings.OutputFormat;
+            nudElevenLabsStability.Value = ToNumericRatio(settings.Stability, ElevenLabsSettings.DefaultStability);
+            nudElevenLabsSimilarityBoost.Value = ToNumericRatio(settings.SimilarityBoost, ElevenLabsSettings.DefaultSimilarityBoost);
+            UpdateElevenLabsStatus(settings);
+        }
+
+        private void btnSaveElevenLabsSettings_Click(object sender, EventArgs e)
+        {
+            if (!TryBuildElevenLabsSettingsFromUi(out var settings, out var validationErrors))
+            {
+                UpdateElevenLabsStatus(settings, validationErrors);
+                Log("Configuración ElevenLabs no guardada: " + string.Join(" ", validationErrors));
+                MessageBox.Show(
+                    "La configuración de ElevenLabs está incompleta o no es válida. Revisa los campos obligatorios.",
+                    "ElevenLabs",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                ElevenLabsSettingsStore.Save(settings);
+                UpdateElevenLabsStatus(settings);
+                Log($"Configuración ElevenLabs guardada en {ElevenLabsSettingsStore.GetConfigPath()}.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
+            {
+                lblElevenLabsStatus.Text = "Error de validación";
+                lblElevenLabsStatus.ForeColor = Color.FromArgb(185, 28, 28);
+                uiToolTip.SetToolTip(lblElevenLabsStatus, ex.Message);
+                Log($"No se pudo guardar la configuración ElevenLabs: {ex.Message}");
+                MessageBox.Show(
+                    "No se pudo guardar la configuración de ElevenLabs.",
+                    "ElevenLabs",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnTestElevenLabsSettings_Click(object sender, EventArgs e)
+        {
+            if (!TryBuildElevenLabsSettingsFromUi(out var settings, out var validationErrors))
+            {
+                UpdateElevenLabsStatus(settings, validationErrors);
+                Log("Prueba ElevenLabs fallida: " + string.Join(" ", validationErrors));
+                return;
+            }
+
+            UpdateElevenLabsStatus(settings);
+            Log("Prueba ElevenLabs correcta: configuración mínima presente. No se llamó a la API.");
+        }
+
+        private bool TryBuildElevenLabsSettingsFromUi(
+            out ElevenLabsSettings settings,
+            out IReadOnlyList<string> validationErrors)
+        {
+            settings = new ElevenLabsSettings(
+                txtElevenLabsApiKey.Text,
+                txtElevenLabsVoiceId.Text,
+                txtElevenLabsModelId.Text,
+                txtElevenLabsOutputFormat.Text,
+                (double)nudElevenLabsStability.Value,
+                (double)nudElevenLabsSimilarityBoost.Value);
+
+            validationErrors = settings.Validate();
+            return validationErrors.Count == 0;
+        }
+
+        private void UpdateElevenLabsStatus(
+            ElevenLabsSettings settings,
+            IReadOnlyList<string>? validationErrors = null)
+        {
+            validationErrors ??= settings.Validate();
+
+            if (validationErrors.Count == 0)
+            {
+                lblElevenLabsStatus.Text = "Configurado";
+                lblElevenLabsStatus.ForeColor = Color.FromArgb(21, 128, 61);
+                uiToolTip.SetToolTip(lblElevenLabsStatus, "Configuración ElevenLabs válida.");
+            }
+            else if (string.IsNullOrWhiteSpace(settings.ApiKey) || string.IsNullOrWhiteSpace(settings.VoiceId))
+            {
+                lblElevenLabsStatus.Text = "No configurado";
+                lblElevenLabsStatus.ForeColor = Color.FromArgb(180, 83, 9);
+                uiToolTip.SetToolTip(lblElevenLabsStatus, string.Join(Environment.NewLine, validationErrors));
+            }
+            else
+            {
+                lblElevenLabsStatus.Text = "Error de validación";
+                lblElevenLabsStatus.ForeColor = Color.FromArgb(185, 28, 28);
+                uiToolTip.SetToolTip(lblElevenLabsStatus, string.Join(Environment.NewLine, validationErrors));
+            }
+
+            UpdateConfigurationSummary();
+        }
+
+        private void SetElevenLabsControlsEnabled(bool enabled)
+        {
+            txtElevenLabsApiKey.Enabled = enabled;
+            txtElevenLabsVoiceId.Enabled = enabled;
+            txtElevenLabsModelId.Enabled = enabled;
+            txtElevenLabsOutputFormat.Enabled = enabled;
+            nudElevenLabsStability.Enabled = enabled;
+            nudElevenLabsSimilarityBoost.Enabled = enabled;
+            btnSaveElevenLabsSettings.Enabled = enabled;
+            btnTestElevenLabsSettings.Enabled = enabled;
+        }
+
+        private static decimal ToNumericRatio(double value, double defaultValue)
+        {
+            if (double.IsNaN(value) || value < 0 || value > 1)
+            {
+                value = defaultValue;
+            }
+
+            return Math.Round((decimal)value, 2, MidpointRounding.AwayFromZero);
+        }
+
         private void UpdateConfigurationSummary()
         {
             if (lblConfigurationSummary == null || chkAutoLineFallback == null)
@@ -475,9 +645,10 @@ namespace Automate_Whatsapp
             string selectedLineNames = selectedLines.Count == 0
                 ? "ninguna"
                 : string.Join(", ", selectedLines.Select(line => line.DisplayName));
+            string elevenLabsStatus = lblElevenLabsStatus?.Text ?? "No configurado";
 
             lblConfigurationSummary.Text =
-                $"Configuración: {selectedLineName} · Auto-fallback: {fallbackText} · Seleccionadas: {selectedLineNames}";
+                $"Configuración: {selectedLineName} · Auto-fallback: {fallbackText} · Seleccionadas: {selectedLineNames} · ElevenLabs: {elevenLabsStatus}";
         }
 
         private List<WhatsAppLine> GetSelectedLinesForRun()
@@ -601,7 +772,8 @@ namespace Automate_Whatsapp
             {
                 case WhatsAppSendOrchestrationState.Sending:
                     isSending = true;
-                    isScheduled = true;
+                    isScheduled = false;
+                    schedulerTimer.Stop();
                     isPaused = false;
                     cancellationRequested = false;
                     cmbWhatsAppLine.Enabled = false;
@@ -1144,8 +1316,8 @@ namespace Automate_Whatsapp
         {
             bool operationActive = (isScheduled || isSending) && !cancellationRequested;
             bool operationBlockingSetup = isScheduled || isSending || isPreparingLines;
-            bool selectedLineReady = SelectedWhatsAppLine?.OperationalState == WhatsAppLineOperationalState.Ready;
-            bool canSendLoadedExcel = ValidPreviewRows > 0 && !isLoadingExcelPreview;
+            bool canRequestSend = SendActionPolicy.CanRequestSend(
+                new SendActionButtonState(isSending, isScheduled, isPreparingLines));
 
             btnPauseResume.Enabled = operationActive;
             btnCancel.Enabled = operationActive;
@@ -1153,11 +1325,14 @@ namespace Automate_Whatsapp
             btnPrepareAllLines.Enabled = whatsAppLines.Count > 0 && !operationBlockingSetup;
             btnSelectRunLines.Enabled = whatsAppLines.Count > 0 && !operationBlockingSetup;
             btnConfigureLines.Enabled = !operationBlockingSetup;
-            btnSend.Enabled = canSendLoadedExcel && selectedLineReady && !operationBlockingSetup;
-            btnSendNow.Enabled = canSendLoadedExcel && selectedLineReady && !operationBlockingSetup;
+            // Los botones de envío quedan disponibles aunque falten precondiciones;
+            // las validaciones centralizadas explican el bloqueo con log y MessageBox.
+            btnSend.Enabled = canRequestSend;
+            btnSendNow.Enabled = canRequestSend;
             btnChangeScheduleTime.Enabled = !operationBlockingSetup;
             cmbWhatsAppLine.Enabled = !operationBlockingSetup;
             chkAutoLineFallback.Enabled = !operationBlockingSetup;
+            SetElevenLabsControlsEnabled(!operationBlockingSetup);
             UpdateMenuState();
         }
 
@@ -1165,18 +1340,6 @@ namespace Automate_Whatsapp
         {
             ApplyExcelPreviewRowStyles();
             dgvExcelPreview.ClearSelection();
-        }
-
-        private void BtnSchedule_Click(object sender, EventArgs e)
-        {
-            scheduledTime = GetSelectedScheduleDateTime();
-            schedulerTimer.Start();
-            isScheduled = true;
-            isPaused = false;
-            cancellationRequested = false;
-            btnPauseResume.Text = "Pausar";
-            SetGeneralStatus(StatusScheduled);
-            UpdateActionButtons();
         }
 
         private void BtnPauseResume_Click(object sender, EventArgs e)
@@ -1242,60 +1405,32 @@ namespace Automate_Whatsapp
 
         private async void SchedulerTimer_Tick(object sender, EventArgs e)
         {
+            if (!isScheduled)
+            {
+                // El Tick puede llegar justo después de cancelar o iniciar envío; no hay acción de usuario que reportar.
+                schedulerTimer.Stop();
+                return;
+            }
+
+            if (isPaused)
+            {
+                // En pausa el timer sigue vivo para poder reanudarse sin reprogramar; no se loguea cada segundo.
+                return;
+            }
+
             var target = SinSegundos(scheduledTime);
 
-            if (isScheduled && !isPaused && DateTime.Now >= target)
+            if (DateTime.Now >= target)
             {
-                schedulerTimer.Stop();
-
-                isScheduled = true;
-
-                if (excelPreviewRows.Count == 0 && !string.IsNullOrEmpty(excelPath))
-                {
-                    LoadExcelPreview();
-                }
-
-                var mensajes = GetValidPreviewMessages();
-                if (mensajes.Count == 0)
-                {
-                    Log("No se encontraron mensajes válidos en el Excel.");
-                    lblPreviewStatus.Text = "No hay filas válidas para enviar. Corrige el Excel antes de programar.";
-                    lblPreviewStatus.ForeColor = Color.FromArgb(185, 28, 28);
-                    isScheduled = false;
-                    cmbWhatsAppLine.Enabled = true;
-                    chkAutoLineFallback.Enabled = true;
-                    SetSendFeedback(StatusNoFile, 0, 0, 0, 0, InvalidPreviewRows);
-                    UpdateActionButtons();
-                    return;
-                }
-
-                if (!ValidateSelectedLinesForRun(showFallbackWarning: false))
-                {
-                    isScheduled = false;
-                    cmbWhatsAppLine.Enabled = true;
-                    chkAutoLineFallback.Enabled = true;
-                    SetGeneralStatus(StatusCancelled);
-                    UpdateActionButtons();
-                    return;
-                }
-
-                if (!ValidateSelectedLineReady())
-                {
-                    isScheduled = false;
-                    cmbWhatsAppLine.Enabled = true;
-                    chkAutoLineFallback.Enabled = true;
-                    SetGeneralStatus(StatusCancelled);
-                    UpdateActionButtons();
-                    return;
-                }
-
-                await RunSendAsync(mensajes);
+                await StartSendAsync(SendStartTrigger.ScheduledTimer);
             }
         }
 
 
         private void btnSend_Click(object sender, EventArgs e)
         {
+            Log("Programación de envío solicitada.");
+
             if (TryStartSchedule())
             {
                 MessageBox.Show(
@@ -1308,29 +1443,7 @@ namespace Automate_Whatsapp
 
         private async void btnSendNow_Click(object sender, EventArgs e)
         {
-            if (isScheduled || isSending || isPreparingLines)
-            {
-                return;
-            }
-
-            if (!TryBuildMessagesForSend(out var mensajes, showFallbackWarning: true))
-            {
-                return;
-            }
-
-            schedulerTimer.Stop();
-            isScheduled = false;
-            isPaused = false;
-            isSending = true;
-            cancellationRequested = false;
-            btnPauseResume.Text = "Pausar";
-            SetSendFeedback(StatusSending, 0, mensajes.Count, 0, 0, InvalidPreviewRows);
-            Log("Envío inmediato solicitado.");
-            LogSelectedLinesForRun();
-            LogReadyFallbackCandidates();
-            UpdateActionButtons();
-
-            await RunSendAsync(mensajes);
+            await StartSendAsync(SendStartTrigger.ImmediateClick);
         }
 
         private void btnConfigureLines_Click(object sender, EventArgs e)
@@ -1491,17 +1604,12 @@ namespace Automate_Whatsapp
             scheduledTime = GetSelectedScheduleDateTime();
             UpdateScheduleSummary();
 
-            if (scheduledTime <= DateTime.Now)
-            {
-                MessageBox.Show(
-                    "Selecciona una fecha y hora futura para programar el envío.",
-                    "Hora no válida",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return false;
-            }
-
-            if (!TryBuildMessagesForSend(out var validMessages, showFallbackWarning: true))
+            if (!TryBuildMessagesForSend(
+                out var validMessages,
+                SendActionKind.Schedule,
+                showFallbackWarning: true,
+                failureContext: "No se programó el envío",
+                confirmInvalidRows: true))
             {
                 return false;
             }
@@ -1517,57 +1625,105 @@ namespace Automate_Whatsapp
             LogReadyFallbackCandidates();
             UpdateActionButtons();
             schedulerTimer.Start();
+            Log($"Envío programado para {scheduledTime:dd/MM/yyyy HH:mm}.");
             return true;
         }
 
-        private bool TryBuildMessagesForSend(out List<OutboundMessage> validMessages, bool showFallbackWarning)
+        private async Task StartSendAsync(SendStartTrigger trigger)
+        {
+            bool fromSchedule = trigger == SendStartTrigger.ScheduledTimer;
+            string failureContext = fromSchedule
+                ? "No se inició el envío programado"
+                : "No se inició el envío inmediato";
+
+            Log(fromSchedule
+                ? $"Hora programada alcanzada ({scheduledTime:dd/MM/yyyy HH:mm}). Iniciando envío programado..."
+                : "Iniciando envío inmediato...");
+
+            if (fromSchedule)
+            {
+                schedulerTimer.Stop();
+                isScheduled = false;
+                isPaused = false;
+            }
+
+            if (!TryBuildMessagesForSend(
+                out var mensajes,
+                SendActionKind.SendNow,
+                showFallbackWarning: !fromSchedule,
+                failureContext: failureContext,
+                confirmInvalidRows: !fromSchedule))
+            {
+                isSending = false;
+                cancellationRequested = false;
+                if (!isScheduled)
+                {
+                    SetGeneralStatus(StatusCancelled);
+                }
+
+                UpdateActionButtons();
+                return;
+            }
+
+            schedulerTimer.Stop();
+            isScheduled = false;
+            isPaused = false;
+            isSending = true;
+            cancellationRequested = false;
+            btnPauseResume.Text = "Pausar";
+            SetSendFeedback(StatusSending, 0, mensajes.Count, 0, 0, InvalidPreviewRows);
+            LogSelectedLinesForRun();
+            LogReadyFallbackCandidates();
+            UpdateActionButtons();
+
+            await RunSendAsync(mensajes);
+        }
+
+        private bool TryBuildMessagesForSend(
+            out List<OutboundMessage> validMessages,
+            SendActionKind action,
+            bool showFallbackWarning,
+            string failureContext,
+            bool confirmInvalidRows)
         {
             validMessages = new List<OutboundMessage>();
 
-            if (string.IsNullOrEmpty(excelPath))
-            {
-                MessageBox.Show("Seleccione un archivo Excel primero.", "Advertencia", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return false;
-            }
-
-            if (isLoadingExcelPreview)
-            {
-                MessageBox.Show(
-                    "Espera a que termine el análisis del Excel antes de programar el envío.",
-                    "Excel en análisis",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-                return false;
-            }
-
-            if (excelPreviewRows.Count == 0)
+            bool hadExcelBeforeLoad = !string.IsNullOrEmpty(excelPath);
+            if (hadExcelBeforeLoad && !isLoadingExcelPreview && excelPreviewRows.Count == 0)
             {
                 LoadExcelPreview();
             }
 
-            validMessages = GetValidPreviewMessages();
-            if (validMessages.Count == 0)
+            if (hadExcelBeforeLoad && string.IsNullOrEmpty(excelPath))
             {
-                MessageBox.Show(
-                    "No hay filas válidas para enviar. Corrige teléfono y mensaje en el Excel.",
-                    "Excel sin filas válidas",
-                    MessageBoxButtons.OK,
+                ShowSendBlocked(
+                    $"{failureContext}: no se pudo leer el Excel seleccionado.",
+                    "No se pudo leer el Excel seleccionado. Vuelve a seleccionar un archivo Excel válido.",
+                    "Excel no válido",
                     MessageBoxIcon.Warning);
                 return false;
             }
 
-            if (!ValidateSelectedLinesForRun(showFallbackWarning))
+            if (selectedLineIdsForRun.Count > 0
+                && SelectedWhatsAppLine is { } selectedLine
+                && !selectedLineIdsForRun.Contains(selectedLine.Id))
             {
+                selectedLineIdsForRun.Add(selectedLine.Id);
+                UpdateRunLinesSummary();
+                Log($"La línea principal {selectedLine.DisplayName} se agregó automáticamente a la selección de esta corrida.");
+            }
+
+            var readiness = SendActionPolicy.Evaluate(CreateSendActionPolicyInput(action, failureContext));
+            if (!readiness.CanProceed)
+            {
+                ShowSendBlocked(readiness);
                 return false;
             }
 
-            if (!ValidateSelectedLineReady())
-            {
-                return false;
-            }
-
+            ShowFallbackWarningIfNeeded(showFallbackWarning);
+            validMessages = GetValidPreviewMessages();
             int invalidRows = excelPreviewRows.Count(row => !row.IsValid);
-            if (invalidRows > 0)
+            if (invalidRows > 0 && confirmInvalidRows)
             {
                 var result = MessageBox.Show(
                     $"El Excel tiene {invalidRows} fila(s) inválida(s). No se enviarán.\n\n¿Quieres continuar únicamente con las {validMessages.Count} fila(s) válida(s)?",
@@ -1577,6 +1733,7 @@ namespace Automate_Whatsapp
 
                 if (result != DialogResult.Yes)
                 {
+                    Log($"{failureContext}: el usuario canceló al detectar {invalidRows} fila(s) inválida(s).");
                     return false;
                 }
             }
@@ -1584,45 +1741,9 @@ namespace Automate_Whatsapp
             return true;
         }
 
-        private bool ValidateSelectedLinesForRun(bool showFallbackWarning)
+        private void ShowFallbackWarningIfNeeded(bool showFallbackWarning)
         {
-            if (selectedLineIdsForRun.Count == 0)
-            {
-                MessageBox.Show(
-                    "Selecciona al menos una línea para esta corrida antes de programar el envío.",
-                    "Líneas de corrida requeridas",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                Log("No se programó el envío porque no hay líneas seleccionadas para esta corrida.");
-                return false;
-            }
-
-            var selectedLine = SelectedWhatsAppLine;
-            if (selectedLine == null)
-            {
-                MessageBox.Show("Selecciona una línea de WhatsApp antes de programar.", "Línea requerida", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return false;
-            }
-
-            if (!selectedLineIdsForRun.Contains(selectedLine.Id))
-            {
-                selectedLineIdsForRun.Add(selectedLine.Id);
-                UpdateRunLinesSummary();
-                Log($"La línea principal {selectedLine.DisplayName} se agregó automáticamente a la selección de esta corrida.");
-            }
-
             int enabledSelectedCount = GetSelectedLinesForRun().Count;
-            if (enabledSelectedCount == 0)
-            {
-                MessageBox.Show(
-                    "Las líneas seleccionadas ya no están habilitadas. Selecciona al menos una línea habilitada para esta corrida.",
-                    "Líneas no disponibles",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                Log("No se programó el envío porque las líneas seleccionadas no están habilitadas.");
-                return false;
-            }
-
             if (showFallbackWarning && chkAutoLineFallback.Checked && enabledSelectedCount == 1)
             {
                 MessageBox.Show(
@@ -1632,31 +1753,52 @@ namespace Automate_Whatsapp
                     MessageBoxIcon.Information);
                 Log("Fallback automático activado con una sola línea seleccionada; no habrá alternativas para esta corrida.");
             }
-
-            return true;
         }
 
-        private bool ValidateSelectedLineReady()
+        private SendActionPolicyInput CreateSendActionPolicyInput(SendActionKind action, string failureContext)
         {
             var selectedLine = SelectedWhatsAppLine;
-            if (selectedLine == null)
+            return new SendActionPolicyInput
             {
-                MessageBox.Show("Selecciona una línea de WhatsApp antes de programar.", "Línea requerida", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return false;
-            }
+                Action = action,
+                FailureContext = failureContext,
+                HasExcel = !string.IsNullOrEmpty(excelPath),
+                ValidRowCount = ValidPreviewRows,
+                AvailableLineCount = whatsAppLines.Count,
+                HasSelectedLine = selectedLine != null,
+                SelectedRunLineCount = selectedLineIdsForRun.Count,
+                EnabledSelectedRunLineCount = GetSelectedLinesForRun().Count,
+                SelectedLineState = selectedLine?.OperationalState ?? WhatsAppLineOperationalState.Unknown,
+                SelectedLineName = selectedLine?.DisplayName ?? "",
+                IsSending = isSending,
+                IsScheduled = isScheduled,
+                IsPreparingLines = isPreparingLines,
+                IsLoadingExcelPreview = isLoadingExcelPreview,
+                ScheduledTime = action == SendActionKind.Schedule ? scheduledTime : null,
+                Now = DateTime.Now
+            };
+        }
 
-            if (selectedLine.OperationalState == WhatsAppLineOperationalState.Ready)
-            {
-                return true;
-            }
-
+        private void ShowSendBlocked(SendActionPolicyResult result)
+        {
+            Log(result.LogMessage);
             MessageBox.Show(
-                $"Prepara la línea {selectedLine.DisplayName} antes de programar el envío.\n\nEstado actual: {selectedLine.OperationalStateText}.",
-                "Línea no preparada",
+                result.UserMessage,
+                result.Title,
                 MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
-            Log($"No se programó el envío porque la línea {selectedLine.DisplayName} no está lista. Estado: {selectedLine.OperationalStateText}.");
-            return false;
+                result.Severity == SendActionBlockSeverity.Information
+                    ? MessageBoxIcon.Information
+                    : MessageBoxIcon.Warning);
+        }
+
+        private void ShowSendBlocked(
+            string logMessage,
+            string userMessage,
+            string title,
+            MessageBoxIcon icon)
+        {
+            Log(logMessage);
+            MessageBox.Show(userMessage, title, MessageBoxButtons.OK, icon);
         }
 
         private void LogReadyFallbackCandidates()

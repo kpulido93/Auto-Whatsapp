@@ -1,26 +1,49 @@
-﻿using System.Text;
+using System.Text;
 
 namespace Automate_Whatsapp.Logic
 {
     public class ElevenLabsTts
     {
-        private readonly string apiKey = "sk_4ebd263194ba8907d1f8228c27e1b0edf953c5ca5ab281e3";
-        private readonly string voiceId = "IoWn77TsmQnza94sYlfg";
+        private readonly ElevenLabsSettings settings;
+        private readonly Action<string> log;
 
-        public async Task<string> ConvertToOggAsync(string text, string outputPath)
+        public ElevenLabsTts()
+            : this(ElevenLabsSettingsStore.LoadOrEnvironment(), Console.WriteLine)
         {
+        }
+
+        public ElevenLabsTts(Action<string> log)
+            : this(ElevenLabsSettingsStore.LoadOrEnvironment(), log)
+        {
+        }
+
+        public ElevenLabsTts(ElevenLabsSettings settings, Action<string>? log = null)
+        {
+            this.settings = settings ?? throw new ArgumentNullException(nameof(settings));
+            this.log = log ?? Console.WriteLine;
+        }
+
+        public virtual async Task<string> ConvertToOggAsync(string text, string outputPath)
+        {
+            IReadOnlyList<string> configurationErrors = settings.Validate();
+            if (configurationErrors.Count > 0)
+            {
+                log("Configuracion ElevenLabs incompleta o invalida. " + string.Join(" ", configurationErrors));
+                return string.Empty;
+            }
+
             using (var client = new HttpClient())
             {
-                client.DefaultRequestHeaders.Add("xi-api-key", apiKey);
+                client.DefaultRequestHeaders.Add("xi-api-key", settings.ApiKey);
 
                 var payload = new
                 {
                     text = text,
-                    model_id = "eleven_multilingual_v2",
+                    model_id = settings.ModelId,
                     voice_settings = new
                     {
-                        stability = 0.75,
-                        similarity_boost = 0.75
+                        stability = settings.Stability,
+                        similarity_boost = settings.SimilarityBoost
                     }
                 };
 
@@ -28,28 +51,32 @@ namespace Automate_Whatsapp.Logic
 
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await client.PostAsync($"https://api.elevenlabs.io/v1/text-to-speech/{voiceId}?output_format=opus_48000_96", content);
+                string requestUrl = "https://api.elevenlabs.io/v1/text-to-speech/"
+                    + Uri.EscapeDataString(settings.VoiceId)
+                    + "?output_format="
+                    + Uri.EscapeDataString(settings.OutputFormat);
+
+                var response = await client.PostAsync(requestUrl, content);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    Console.WriteLine($"❌ Error HTTP: {response.StatusCode}");
+                    log($"Error HTTP de ElevenLabs: {response.StatusCode}");
                     var error = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"Detalles: {error}");
-                    return null;
+                    log($"Detalles: {error}");
+                    return string.Empty;
                 }
 
                 byte[] audioBytes = await response.Content.ReadAsByteArrayAsync();
 
-                string dir = Path.GetDirectoryName(outputPath);
-                if (!Directory.Exists(dir))
+                string? dir = Path.GetDirectoryName(outputPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 {
                     Directory.CreateDirectory(dir);
                 }
 
-                File.WriteAllBytes(outputPath, audioBytes);
+                await File.WriteAllBytesAsync(outputPath, audioBytes);
 
-                
-                Console.WriteLine("✅ Audio generado correctamente: " + outputPath);
+                log("Audio generado correctamente: " + outputPath);
                 return outputPath;
             }
         }

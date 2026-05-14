@@ -9,8 +9,14 @@ Aplicacion Windows Forms para programar envios por WhatsApp Web desde un archivo
 - Google Chrome instalado.
 - Una cuenta de WhatsApp con acceso a WhatsApp Web.
 - Variables de entorno para ElevenLabs si se enviaran audios:
-  - `ELEVENLABS_API_KEY`
-  - `ELEVENLABS_VOICE_ID`
+  - `ELEVENLABS_API_KEY` (obligatoria)
+  - `ELEVENLABS_VOICE_ID` (obligatoria)
+  - `ELEVENLABS_MODEL_ID` (opcional, por defecto `eleven_multilingual_v2`)
+  - `ELEVENLABS_OUTPUT_FORMAT` (opcional, por defecto `opus_48000_96`)
+  - `ELEVENLABS_STABILITY` (opcional, por defecto `0.75`)
+  - `ELEVENLABS_SIMILARITY_BOOST` (opcional, por defecto `0.75`)
+
+La aplicacion no incluye API keys ni voice IDs por defecto. Tambien puedes configurar ElevenLabs desde el panel **Configuración**, seccion **ElevenLabs**, de la app. La configuracion local se guarda en `%AppData%\AutoWhatsApp\elevenlabs-settings.json`; la API key se guarda cifrada para el usuario actual. Si no existe configuracion local, la app usa las variables de entorno anteriores.
 
 ## Compilar
 
@@ -55,4 +61,5 @@ Al cargar una plantilla vacia, la vista previa mostrara 0 filas y no se habilita
 - [Arquitectura](docs/architecture.md)
 - [Despliegue](docs/deployment.md)
 - [Seguridad](docs/security.md)
+- [Diagnostico de audio](docs/audio-troubleshooting.md)
 - [Decisiones](docs/decisions.md)

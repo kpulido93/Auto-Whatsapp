@@ -9,5 +9,8 @@ public enum WhatsAppHealthStatus
     SenderAccountBlockedOrRestricted,
     WhatsAppNotReady,
     BrowserUnavailable,
+    TextToSpeechFailed,
+    AudioFileInvalid,
+    WhatsAppAttachmentFailed,
     UnknownError
 }

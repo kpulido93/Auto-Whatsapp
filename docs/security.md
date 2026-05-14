@@ -12,8 +12,16 @@ No guardar secretos en el repositorio. En particular:
 
 La aplicacion lee estas variables en tiempo de ejecucion:
 
-- `ELEVENLABS_API_KEY`
-- `ELEVENLABS_VOICE_ID`
+- `ELEVENLABS_API_KEY` (obligatoria para audios)
+- `ELEVENLABS_VOICE_ID` (obligatoria para audios)
+- `ELEVENLABS_MODEL_ID` (opcional)
+- `ELEVENLABS_OUTPUT_FORMAT` (opcional)
+- `ELEVENLABS_STABILITY` (opcional)
+- `ELEVENLABS_SIMILARITY_BOOST` (opcional)
+
+No hay API key ni voice ID por defecto en el codigo. Si falta una variable obligatoria, la aplicacion no intenta llamar a ElevenLabs y registra la variable faltante.
+
+Desde el panel de configuracion se puede guardar ElevenLabs en `%AppData%/AutoWhatsApp/elevenlabs-settings.json`. La API key se cifra con proteccion de datos de Windows para el usuario actual; no debe copiarse ni versionarse ese archivo.
 
 ## Datos sensibles
 

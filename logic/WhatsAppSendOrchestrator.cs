@@ -18,8 +18,8 @@ public sealed class WhatsAppSendOrchestrator
         Func<ElevenLabsTts>? ttsFactory = null)
     {
         this.whatsAppLines = whatsAppLines.ToList();
-        this.senderFactory = senderFactory ?? (line => new WhatsAppSender(line));
-        this.ttsFactory = ttsFactory ?? (() => new ElevenLabsTts());
+        this.senderFactory = senderFactory ?? (line => new WhatsAppSender(line, EmitLog));
+        this.ttsFactory = ttsFactory ?? (() => new ElevenLabsTts(EmitLog));
     }
 
     public event Action<string>? Log;
@@ -220,9 +220,11 @@ public sealed class WhatsAppSendOrchestrator
                 return sender.SendMessage(fullPhone, message, false);
             }
 
+            EmitLog($"Abriendo chat para {fullPhone} antes de enviar audio.");
             var openChatResult = sender.OpenChat(fullPhone);
             if (!openChatResult.Success)
             {
+                EmitLog($"No se pudo abrir chat para {fullPhone}: {openChatResult.Message}");
                 return openChatResult;
             }
 
@@ -231,14 +233,18 @@ public sealed class WhatsAppSendOrchestrator
                 $"ptt_{Guid.NewGuid()}.ogg"
             );
 
-            string resultPath = await tts.ConvertToOggAsync(message, audioPathMsg);
+            EmitLog($"Generando audio para {fullPhone}");
+            string? resultPath = await tts.ConvertToOggAsync(message, audioPathMsg);
+            var audioValidationFailure = ValidateGeneratedAudioFile(resultPath, fullPhone, out var generatedAudioFile);
 
-            return string.IsNullOrEmpty(resultPath)
-                ? WhatsAppSendResult.Failure(
-                    WhatsAppHealthStatus.UnknownError,
-                    $"No se pudo generar el audio para {fullPhone}.",
-                    false)
-                : sender.SendAudio(resultPath);
+            if (audioValidationFailure != null)
+            {
+                EmitLog($"Fallo al generar audio para {fullPhone}: {audioValidationFailure.Message}");
+                return audioValidationFailure;
+            }
+
+            EmitLog($"Audio generado para {fullPhone}: {generatedAudioFile!.FullName} ({generatedAudioFile.Length} bytes).");
+            return sender.SendAudio(generatedAudioFile.FullName);
         }
 
         WhatsAppSendResult CheckCurrentLineHealth()
@@ -503,6 +509,55 @@ public sealed class WhatsAppSendOrchestrator
             ? WhatsAppSendOrchestrationState.Cancelled
             : WhatsAppSendOrchestrationState.Finished);
         return summary;
+    }
+
+    private static WhatsAppSendResult? ValidateGeneratedAudioFile(
+        string? audioPath,
+        string fullPhone,
+        out FileInfo? audioFile)
+    {
+        audioFile = null;
+
+        if (string.IsNullOrWhiteSpace(audioPath))
+        {
+            return WhatsAppSendResult.Failure(
+                WhatsAppHealthStatus.TextToSpeechFailed,
+                $"ElevenLabs no devolvio una ruta de audio para {fullPhone}. Revisa la configuracion de ElevenLabs y los detalles previos del log.",
+                false);
+        }
+
+        string fullAudioPath;
+        try
+        {
+            fullAudioPath = Path.GetFullPath(audioPath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return WhatsAppSendResult.Failure(
+                WhatsAppHealthStatus.AudioFileInvalid,
+                $"La ruta de audio generada para {fullPhone} no es valida: {audioPath}.",
+                false,
+                ex);
+        }
+
+        if (!File.Exists(fullAudioPath))
+        {
+            return WhatsAppSendResult.Failure(
+                WhatsAppHealthStatus.AudioFileInvalid,
+                $"ElevenLabs devolvio una ruta de audio para {fullPhone}, pero el archivo no existe: {fullAudioPath}.",
+                false);
+        }
+
+        audioFile = new FileInfo(fullAudioPath);
+        if (audioFile.Length <= 0)
+        {
+            return WhatsAppSendResult.Failure(
+                WhatsAppHealthStatus.AudioFileInvalid,
+                $"El archivo de audio generado para {fullPhone} esta vacio: {fullAudioPath}.",
+                false);
+        }
+
+        return null;
     }
 
     private IWhatsAppSender? GetOrCreateWhatsSender(WhatsAppLine? selectedLine)

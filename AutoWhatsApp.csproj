@@ -21,6 +21,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="AutoWhatsApp.Tests\**\*.cs" />
+    <EmbeddedResource Remove="AutoWhatsApp.Tests\**\*" />
+    <None Remove="AutoWhatsApp.Tests\**\*" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="DotNetSeleniumExtras.WaitHelpers" Version="3.11.0" />
     <PackageReference Include="Selenium.WebDriver" Version="4.33.0" />
