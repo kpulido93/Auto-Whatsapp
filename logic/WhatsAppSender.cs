@@ -8,6 +8,14 @@ namespace Automate_Whatsapp.Logic
     public class WhatsAppSender : IWhatsAppSender
     {
         private static readonly TimeSpan DefaultWaitTimeout = TimeSpan.FromSeconds(15);
+        private const int MaxChromeStartupAttempts = 3;
+        private static readonly string[] ChromeStartupTransientMarkers =
+        {
+            "session not created",
+            "DevToolsActivePort file doesn't exist",
+            "Chrome failed to start",
+            "user data directory is already in use"
+        };
 
         private readonly IWebDriver driver;
         private readonly Action<string> log;
@@ -19,18 +27,89 @@ namespace Automate_Whatsapp.Logic
             Line = line ?? throw new ArgumentNullException(nameof(line));
             this.log = log ?? (_ => { });
 
-            ChromeOptions options = new ChromeOptions();
-            string fullPath = Path.GetFullPath(Line.SessionPath);
-            Directory.CreateDirectory(fullPath); // Asegurar que exista
-
-            options.AddArgument("--user-data-dir=" + fullPath);
-            options.AddArgument("--profile-directory=" + Line.ProfileDirectory);
-            options.AddArgument("--start-maximized");
-            var chromeService = ChromeDriverService.CreateDefaultService();
-            chromeService.HideCommandPromptWindow = true;
-
-            driver = new ChromeDriver(chromeService, options);
+            driver = CreateChromeDriverWithRetry(
+                Line,
+                this.log,
+                (service, options) => new ChromeDriver(service, options),
+                Thread.Sleep);
             driver.Navigate().GoToUrl("https://web.whatsapp.com");
+        }
+
+        public static TDriver CreateChromeDriverWithRetry<TDriver>(
+            WhatsAppLine line,
+            Action<string> log,
+            Func<ChromeDriverService, ChromeOptions, TDriver> driverFactory,
+            Action<TimeSpan>? delay = null)
+        {
+            ArgumentNullException.ThrowIfNull(line);
+            ArgumentNullException.ThrowIfNull(log);
+            ArgumentNullException.ThrowIfNull(driverFactory);
+
+            delay ??= Thread.Sleep;
+
+            string userDataDir = Path.GetFullPath(line.SessionPath);
+            string profileDirectory = string.IsNullOrWhiteSpace(line.ProfileDirectory)
+                ? "Default"
+                : line.ProfileDirectory.Trim();
+            Directory.CreateDirectory(userDataDir);
+
+            Exception? lastTransientException = null;
+
+            for (int attempt = 1; attempt <= MaxChromeStartupAttempts; attempt++)
+            {
+                log($"Abriendo Chrome para {line.DisplayName}. Intento {attempt}/{MaxChromeStartupAttempts}. user-data-dir: {userDataDir}. profile-directory: {profileDirectory}.");
+
+                var chromeService = ChromeDriverService.CreateDefaultService();
+                chromeService.HideCommandPromptWindow = true;
+
+                try
+                {
+                    return driverFactory(chromeService, BuildChromeOptions(userDataDir, profileDirectory));
+                }
+                catch (WebDriverException ex) when (IsTransientChromeStartupException(ex))
+                {
+                    chromeService.Dispose();
+                    lastTransientException = ex;
+                    string errorSummary = SummarizeExceptionMessage(ex);
+                    log($"Fallo transitorio al abrir Chrome. Intento {attempt}/{MaxChromeStartupAttempts}. user-data-dir: {userDataDir}. profile-directory: {profileDirectory}. Error: {errorSummary}");
+
+                    if (attempt == MaxChromeStartupAttempts)
+                    {
+                        break;
+                    }
+
+                    TimeSpan backoff = TimeSpan.FromMilliseconds(500 * attempt);
+                    log($"Reintentando apertura de Chrome para {line.DisplayName} en {backoff.TotalSeconds:0.0}s.");
+                    delay(backoff);
+                }
+                catch
+                {
+                    chromeService.Dispose();
+                    throw;
+                }
+            }
+
+            string finalMessage =
+                $"No se pudo abrir Chrome despues de {MaxChromeStartupAttempts} intentos. " +
+                "Cierra ventanas de Chrome abiertas con esta línea o cambia la ruta de sesión. " +
+                $"user-data-dir: {userDataDir}. profile-directory: {profileDirectory}. " +
+                $"Ultimo error: {SummarizeExceptionMessage(lastTransientException)}";
+
+            log(finalMessage);
+            throw new WebDriverException(finalMessage, lastTransientException);
+        }
+
+        private static ChromeOptions BuildChromeOptions(string userDataDir, string profileDirectory)
+        {
+            ChromeOptions options = new ChromeOptions();
+            options.AddArgument("--user-data-dir=" + userDataDir);
+            options.AddArgument("--profile-directory=" + profileDirectory);
+            options.AddArgument("--start-maximized");
+            options.AddArgument("--no-first-run");
+            options.AddArgument("--no-default-browser-check");
+            options.AddArgument("--disable-popup-blocking");
+            options.AddArgument("--remote-allow-origins=*");
+            return options;
         }
 
         private static class Selectors
@@ -581,6 +660,34 @@ namespace Automate_Whatsapp.Logic
         private static bool ContainsAny(string text, IEnumerable<string> markers)
         {
             return markers.Any(marker => text.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private static bool IsTransientChromeStartupException(WebDriverException ex)
+        {
+            string message = ex.Message ?? "";
+            string? innerMessage = ex.InnerException?.Message;
+
+            return ContainsAny(message, ChromeStartupTransientMarkers)
+                || (!string.IsNullOrWhiteSpace(innerMessage) && ContainsAny(innerMessage, ChromeStartupTransientMarkers));
+        }
+
+        private static string SummarizeExceptionMessage(Exception? ex)
+        {
+            if (ex == null)
+            {
+                return "No disponible.";
+            }
+
+            string message = (ex.Message ?? "").ReplaceLineEndings(" ").Trim();
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                message = ex.GetType().Name;
+            }
+
+            const int maxLength = 280;
+            return message.Length <= maxLength
+                ? message
+                : message[..maxLength] + "...";
         }
 
         private static WhatsAppHealthIssue Issue(WhatsAppHealthStatus status, string message, Exception? exception = null)

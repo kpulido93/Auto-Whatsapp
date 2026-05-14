@@ -657,6 +657,7 @@ public sealed class WhatsAppSendOrchestrator
         catch (Exception ex)
         {
             EmitLog($"❌ No se pudo abrir Chrome para {line.DisplayName}: {ex.Message}");
+            EmitLog($"Sugerencia: Cierra ventanas de Chrome abiertas con esta línea o cambia la ruta de sesión. Ruta de sesión: {GetSafeSessionPath(line.SessionPath)}. Perfil: {line.ProfileDirectory}.");
             if (showOpenError)
             {
                 SenderOpenFailed?.Invoke(line, ex.Message);
@@ -665,6 +666,18 @@ public sealed class WhatsAppSendOrchestrator
             whatsSender = null;
             currentLine = null;
             return null;
+        }
+    }
+
+    private static string GetSafeSessionPath(string sessionPath)
+    {
+        try
+        {
+            return Path.GetFullPath(sessionPath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return sessionPath;
         }
     }
 
