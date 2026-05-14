@@ -23,6 +23,11 @@ namespace Automate_Whatsapp.Logic
             this.log = log ?? Console.WriteLine;
         }
 
+        public IReadOnlyList<string> ValidateConfiguration()
+        {
+            return settings.Validate();
+        }
+
         public virtual async Task<string> ConvertToOggAsync(string text, string outputPath)
         {
             IReadOnlyList<string> configurationErrors = settings.Validate();

@@ -93,7 +93,55 @@ public sealed class AudioSendDiagnosticsTests
         Assert.Equal(0, tts.ConvertCalls);
     }
 
-    private static TestContext CreateContext(FakeWhatsAppSender sender, FakeTts tts)
+    [Fact]
+    public async Task SendAsync_WhenAudioAndElevenLabsSettingsInvalid_StopsBeforeOpeningSenderOrConvertingTts()
+    {
+        var tts = new FakeTts(null, new ElevenLabsSettings("", ""));
+        var sender = new FakeWhatsAppSender();
+        int senderFactoryCalls = 0;
+        var context = CreateContext(sender, tts, onSenderFactoryInvoked: () => senderFactoryCalls++);
+
+        var summary = await context.Orchestrator.SendAsync(
+            new[] { new OutboundMessage("57", "3001112233", "audio", true) },
+            new WhatsAppSendOptions(context.Line, AutoFallbackEnabled: false, SkippedCount: 0));
+
+        Assert.Equal(0, senderFactoryCalls);
+        Assert.Equal(0, tts.ConvertCalls);
+        Assert.Equal(0, sender.OpenChatCalls);
+        Assert.Equal(0, summary.Processed);
+        Assert.Equal(0, summary.Sent);
+        Assert.Equal(1, summary.Pending);
+        Assert.True(summary.StoppedByGlobalFailure);
+        Assert.Empty(context.MessageResults);
+        Assert.Contains(context.Logs, log => log.Contains("ElevenLabs no está configurado para enviar audios. Guarda API key y Voice ID antes de iniciar.", StringComparison.Ordinal));
+        Assert.DoesNotContain(context.Logs, log => log.Contains("Abriendo Chrome", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(context.Logs, log => log.Contains("ElevenLabs no devolvio una ruta", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTextAndElevenLabsSettingsInvalid_SendsTextWithoutValidatingTts()
+    {
+        var tts = new FakeTts(null, new ElevenLabsSettings("", ""));
+        var sender = new FakeWhatsAppSender();
+        int ttsFactoryCalls = 0;
+        var context = CreateContext(sender, tts, onTtsFactoryInvoked: () => ttsFactoryCalls++);
+
+        var summary = await context.Orchestrator.SendAsync(
+            new[] { new OutboundMessage("57", "3001112233", "texto", false) },
+            new WhatsAppSendOptions(context.Line, AutoFallbackEnabled: false, SkippedCount: 0));
+
+        Assert.Equal(1, summary.Sent);
+        Assert.Equal(1, sender.SendMessageCalls);
+        Assert.Equal(0, sender.SendAudioCalls);
+        Assert.Equal(0, ttsFactoryCalls);
+        Assert.Equal(0, tts.ConvertCalls);
+    }
+
+    private static TestContext CreateContext(
+        FakeWhatsAppSender sender,
+        FakeTts tts,
+        Action? onSenderFactoryInvoked = null,
+        Action? onTtsFactoryInvoked = null)
     {
         var line = new WhatsAppLine
         {
@@ -107,8 +155,16 @@ public sealed class AudioSendDiagnosticsTests
         var messageResults = new List<WhatsAppMessageResult>();
         var orchestrator = new WhatsAppSendOrchestrator(
             new[] { line },
-            _ => sender,
-            () => tts);
+            _ =>
+            {
+                onSenderFactoryInvoked?.Invoke();
+                return sender;
+            },
+            () =>
+            {
+                onTtsFactoryInvoked?.Invoke();
+                return tts;
+            });
 
         orchestrator.Log += logs.Add;
         orchestrator.MessageResult += messageResults.Add;
@@ -126,8 +182,8 @@ public sealed class AudioSendDiagnosticsTests
     {
         private readonly string? resultPath;
 
-        public FakeTts(string? resultPath)
-            : base(new ElevenLabsSettings("api-key", "voice-id"), _ => { })
+        public FakeTts(string? resultPath, ElevenLabsSettings? settings = null)
+            : base(settings ?? new ElevenLabsSettings("api-key", "voice-id"), _ => { })
         {
             this.resultPath = resultPath;
         }
@@ -155,6 +211,8 @@ public sealed class AudioSendDiagnosticsTests
 
         public int SendAudioCalls { get; private set; }
 
+        public int OpenChatCalls { get; private set; }
+
         public WhatsAppHealthIssue WaitForReady(TimeSpan timeout)
         {
             return ReadyIssue();
@@ -168,6 +226,7 @@ public sealed class AudioSendDiagnosticsTests
 
         public WhatsAppSendResult OpenChat(string phone)
         {
+            OpenChatCalls++;
             return WhatsAppSendResult.Ok("Chat listo para enviar.");
         }
 

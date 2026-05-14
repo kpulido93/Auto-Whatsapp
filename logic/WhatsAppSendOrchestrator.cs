@@ -165,15 +165,9 @@ public sealed class WhatsAppSendOrchestrator
 
         string renamed = "Resources/audio_temp.ogg";
         string audioPath = Path.Combine(Path.GetDirectoryName(renamed)!, $"ptt_{Guid.NewGuid()}.ogg");
-        var tts = ttsFactory();
-        IWhatsAppSender? sender = GetOrCreateWhatsSender(options.SelectedLine);
-
-        if (sender == null)
-        {
-            isRunning = false;
-            EmitState(WhatsAppSendOrchestrationState.Cancelled);
-            return BuildSummary(cancelled: true);
-        }
+        ElevenLabsTts? tts = null;
+        IWhatsAppSender? sender = null;
+        const string elevenLabsPreflightFailureMessage = "ElevenLabs no está configurado para enviar audios. Guarda API key y Voice ID antes de iniciar.";
 
         void EmitProgress()
         {
@@ -218,6 +212,14 @@ public sealed class WhatsAppSendOrchestrator
             if (!toAudio)
             {
                 return sender.SendMessage(fullPhone, message, false);
+            }
+
+            if (tts == null)
+            {
+                return WhatsAppSendResult.Failure(
+                    WhatsAppHealthStatus.TextToSpeechFailed,
+                    elevenLabsPreflightFailureMessage,
+                    false);
             }
 
             EmitLog($"Abriendo chat para {fullPhone} antes de enviar audio.");
@@ -371,6 +373,42 @@ public sealed class WhatsAppSendOrchestrator
                 cancelled,
                 stoppedByGlobalFailure,
                 globalFailureReason);
+        }
+
+        WhatsAppSendRunSummary StopBeforeProcessing(string failureReason)
+        {
+            stoppedByGlobalFailure = true;
+            globalFailureReason = $"{WhatsAppHealthStatus.TextToSpeechFailed}: {failureReason}";
+            isRunning = false;
+            isPaused = false;
+            isCancellationRequested = false;
+
+            var summary = BuildSummary(cancelled: false);
+            EmitLog($"Resumen de envío. {summary.DisplaySummary}");
+            EmitLog($"⛔ Envío detenido. Procesados: {summary.Processed}. Pendientes: {summary.Pending}. Motivo: {summary.GlobalFailureReason}");
+            EmitProgress();
+            EmitState(WhatsAppSendOrchestrationState.Cancelled);
+            return summary;
+        }
+
+        if (messages.Any(message => message.ToAudio))
+        {
+            tts = ttsFactory();
+            IReadOnlyList<string> configurationErrors = tts.ValidateConfiguration();
+            if (configurationErrors.Count > 0)
+            {
+                EmitLog(elevenLabsPreflightFailureMessage);
+                return StopBeforeProcessing(elevenLabsPreflightFailureMessage);
+            }
+        }
+
+        sender = GetOrCreateWhatsSender(options.SelectedLine);
+
+        if (sender == null)
+        {
+            isRunning = false;
+            EmitState(WhatsAppSendOrchestrationState.Cancelled);
+            return BuildSummary(cancelled: true);
         }
 
         try
