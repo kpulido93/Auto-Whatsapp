@@ -102,6 +102,30 @@ namespace Automate_Whatsapp.Logic
             public string Origin { get; init; } = "";
         }
 
+        private sealed class AudioOutgoingBaseline
+        {
+            public bool IsAvailable { get; init; }
+            public int OutgoingMessageCount { get; init; }
+            public int OutgoingAudioMessageCount { get; init; }
+            public int OutgoingAudioControlCount { get; init; }
+            public string LastOutgoingMessageSignature { get; init; } = "";
+            public bool LastOutgoingMessageHasAudio { get; init; }
+            public int LastOutgoingMessageAudioControlCount { get; init; }
+            public string Diagnostic { get; init; } = "";
+        }
+
+        private sealed class AudioSendCompletionResult
+        {
+            public bool Success { get; init; }
+            public string Reason { get; init; } = "";
+            public bool PreviewClosed { get; init; }
+            public bool OutgoingAudioDetected { get; init; }
+            public bool NativeDialogDetected { get; init; }
+            public bool NativeDialogCleanupAttempted { get; init; }
+            public string Warning { get; init; } = "";
+            public string Diagnostic { get; init; } = "";
+        }
+
         private sealed class NativeDialogWindowInfo
         {
             public IntPtr Handle { get; init; }
@@ -257,9 +281,12 @@ namespace Automate_Whatsapp.Logic
             private const string AudioTextOrDescendantConditionXPath = AudioTextConditionXPath + " or .//*[" + AudioTextConditionXPath + "]";
             private const string EnabledElementXPath = "not(@aria-disabled='true') and not(@disabled)";
             private const string PreviewElementText = "normalize-space(translate(concat(@aria-label, ' ', @title, ' ', @data-icon), '" + XPathUppercase + "', '" + XPathLowercase + "'))";
+            private const string AudioControlElementText = "normalize-space(translate(concat(@aria-label, ' ', @aria-placeholder, ' ', @title, ' ', @data-icon, ' ', @data-testid), '" + XPathUppercase + "', '" + XPathLowercase + "'))";
             public const string AttachmentPreviewPanelXPath = "//*[self::div or @role='dialog'][not(self::footer) and not(ancestor::footer) and not(.//footer) and .//*[@data-icon='wds-ic-send-filled' or @data-icon='send']]";
             public const string AttachmentPreviewControlsXPath = ".//*[self::audio or self::video or self::canvas or self::img or @contenteditable='true' or @role='textbox' or contains(" + PreviewElementText + ", 'caption') or contains(" + PreviewElementText + ", 'pie de foto') or contains(" + PreviewElementText + ", 'adjunto') or contains(" + PreviewElementText + ", 'archivo') or contains(" + PreviewElementText + ", 'document') or contains(" + PreviewElementText + ", 'audio')]";
             public const string PreviewSendButtonXPath = ".//*[self::button or @role='button' or @tabindex='0'][not(ancestor::footer) and (.//*[@data-icon='wds-ic-send-filled' or @data-icon='send'] or @data-icon='wds-ic-send-filled' or @data-icon='send' or contains(" + PreviewElementText + ", 'send') or contains(" + PreviewElementText + ", 'enviar')) and not(@aria-disabled='true')]";
+            public const string OutgoingMessageXPath = "//*[not(ancestor::*[@role='dialog']) and not(ancestor::footer) and (contains(concat(' ', normalize-space(@class), ' '), ' message-out ') or starts-with(@data-id, 'true_') or contains(@data-id, 'true_'))]";
+            public const string OutgoingAudioSignalXPath = ".//*[self::audio or contains(" + AudioControlElementText + ", 'play') or contains(" + AudioControlElementText + ", 'reproducir') or contains(" + AudioControlElementText + ", 'pause') or contains(" + AudioControlElementText + ", 'pausar') or contains(" + AudioControlElementText + ", 'audio') or contains(" + AudioControlElementText + ", 'voice') or contains(" + AudioControlElementText + ", 'voz') or contains(" + AudioControlElementText + ", 'ptt') or contains(" + AudioControlElementText + ", 'waveform') or contains(" + AudioControlElementText + ", 'mic') or contains(" + AudioControlElementText + ", 'microfono') or contains(" + AudioControlElementText + ", 'micrófono')]";
 
             public static readonly By[] MessageBoxLocators =
             {
@@ -848,6 +875,9 @@ namespace Automate_Whatsapp.Logic
                     return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.ClickPreviewSend, "WhatsApp mostró preview de adjunto, pero no se encontró un botón enviar dentro del preview. No se hará click en botones globales."), ex);
                 }
 
+                AudioOutgoingBaseline outgoingBaseline = CaptureOutgoingAudioBaseline();
+                LogAudioStage(AudioAttachStage.ClickPreviewSend, $"baseline mensajes salientes antes de enviar audio: {outgoingBaseline.Diagnostic}");
+
                 try
                 {
                     ClickElementSafely(previewSendButton);
@@ -859,22 +889,39 @@ namespace Automate_Whatsapp.Logic
 
                 LogAudioStage(AudioAttachStage.ClickPreviewSend, "boton enviar del preview clickeado");
 
-                LogAudioStage(AudioAttachStage.WaitPreviewClose, "esperando cierre del preview");
-                try
+                LogAudioStage(AudioAttachStage.WaitPreviewClose, "esperando cierre del preview o confirmación por mensaje saliente");
+                AudioSendCompletionResult sendCompletion = VerifyAudioSendCompleted(wait, audioFileName, outgoingBaseline);
+                if (!sendCompletion.Success)
                 {
-                    if (!VerifyAudioSendCompleted(wait, audioFileName))
+                    LogAudioStage(AudioAttachStage.WaitPreviewClose, "no se confirmó envío; preview visible y sin mensaje saliente");
+                    if (!sendCompletion.NativeDialogDetected)
                     {
-                        return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.WaitPreviewClose, "WhatsApp no confirmó el cierre del preview de adjunto despues de hacer click en enviar; no se marcara el audio como enviado."));
-                    }
-                }
-                catch (WebDriverTimeoutException ex)
-                {
-                    if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, ex, AudioAttachStage.WaitPreviewClose) is { } blockedAfterPreviewSend)
-                    {
-                        return blockedAfterPreviewSend;
+                        LogAudioStage(AudioAttachStage.WaitPreviewClose, "No se detectó diálogo nativo; el preview no cerró dentro del timeout");
                     }
 
-                    return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.WaitPreviewClose, "WhatsApp no cerró el preview de adjunto despues de hacer click en enviar; no se marcara el audio como enviado."), ex);
+                    return AudioUiFailure(BuildAudioStageFailureMessage(
+                        AudioAttachStage.WaitPreviewClose,
+                        "No se confirmó envío de audio: preview no cerró y no apareció mensaje saliente de audio. " + sendCompletion.Diagnostic));
+                }
+
+                if (sendCompletion.PreviewClosed)
+                {
+                    LogAudioStage(AudioAttachStage.WaitPreviewClose, "audio confirmado por preview cerrado");
+                }
+
+                if (sendCompletion.OutgoingAudioDetected)
+                {
+                    LogAudioStage(AudioAttachStage.WaitPreviewClose, "audio confirmado por mensaje saliente de audio");
+                }
+
+                if (sendCompletion.OutgoingAudioDetected && !sendCompletion.PreviewClosed)
+                {
+                    LogAudioStage(AudioAttachStage.WaitPreviewClose, "preview/input tardó en cerrar, pero el audio ya está en el chat");
+                }
+
+                if (!string.IsNullOrWhiteSpace(sendCompletion.Warning))
+                {
+                    log(sendCompletion.Warning);
                 }
 
                 log("Audio enviado; verificando limpieza de diálogo nativo de archivo.");
@@ -1933,23 +1980,428 @@ namespace Automate_Whatsapp.Logic
             }
         }
 
-        private void WaitForPreviewToClose(WebDriverWait wait)
+        private AudioSendCompletionResult VerifyAudioSendCompleted(
+            WebDriverWait wait,
+            string fileName,
+            AudioOutgoingBaseline baseline)
         {
-            IWebElement? preview = activeAttachmentPreview;
-            wait.Until(d =>
+            _ = wait;
+            DateTime startedAt = DateTime.UtcNow;
+            DateTime deadline = startedAt.AddSeconds(45);
+            bool nativeDialogDetected = false;
+            bool nativeDialogCleanupAttempted = false;
+            string nativeDialogDiagnostic = "";
+            string lastOutgoingDiagnostic = "";
+            WebDriverException? lastNonFatalException = null;
+
+            while (DateTime.UtcNow < deadline)
             {
-                bool trackedPreviewClosed = preview == null || IsElementGoneOrHidden(preview);
-                bool noRecognizablePreview = FindAttachmentPreview(d, "") == null;
-                return trackedPreviewClosed && noRecognizablePreview;
-            });
-            activeAttachmentPreview = null;
+                try
+                {
+                    if (TryFindNativeFileDialog(out _, out _))
+                    {
+                        nativeDialogDetected = true;
+                        nativeDialogDiagnostic = GetNativeFileDialogDiagnostic();
+                    }
+                    else if (TryFindValidatedPossibleNativeFileDialog(out _, out _, out string possibleDialogDiagnostic))
+                    {
+                        nativeDialogDetected = true;
+                        nativeDialogDiagnostic = possibleDialogDiagnostic;
+                    }
+
+                    bool previewClosed = IsAttachmentPreviewClosed(fileName);
+                    bool previewSendButtonGone = IsPreviewSendButtonGone(fileName);
+
+                    if (TryDetectNewOutgoingAudioMessage(baseline, out string outgoingDiagnostic))
+                    {
+                        activeAttachmentPreview = previewClosed ? null : activeAttachmentPreview;
+                        return new AudioSendCompletionResult
+                        {
+                            Success = true,
+                            Reason = "mensaje saliente de audio detectado",
+                            PreviewClosed = previewClosed,
+                            OutgoingAudioDetected = true,
+                            NativeDialogDetected = nativeDialogDetected,
+                            NativeDialogCleanupAttempted = false,
+                            Warning = previewClosed ? "" : "Audio confirmado por mensaje saliente; el preview/input tardó en cerrar.",
+                            Diagnostic = $"espera={FormatElapsedMilliseconds(startedAt)}; {outgoingDiagnostic}; preview cerrado={FormatDiagnosticFlag(previewClosed)}; boton enviar preview ausente={FormatDiagnosticFlag(previewSendButtonGone)}"
+                        };
+                    }
+
+                    if (previewClosed || previewSendButtonGone)
+                    {
+                        activeAttachmentPreview = null;
+                        return new AudioSendCompletionResult
+                        {
+                            Success = true,
+                            Reason = previewClosed ? "preview cerrado" : "boton enviar del preview desaparecio",
+                            PreviewClosed = previewClosed,
+                            OutgoingAudioDetected = false,
+                            NativeDialogDetected = nativeDialogDetected,
+                            NativeDialogCleanupAttempted = false,
+                            Warning = "",
+                            Diagnostic = $"espera={FormatElapsedMilliseconds(startedAt)}; preview cerrado={FormatDiagnosticFlag(previewClosed)}; boton enviar preview ausente={FormatDiagnosticFlag(previewSendButtonGone)}; baseline={baseline.Diagnostic}; ultimo diagnostico saliente={FormatDiagnosticValue(lastOutgoingDiagnostic)}"
+                        };
+                    }
+
+                    lastOutgoingDiagnostic = CaptureOutgoingAudioBaseline().Diagnostic;
+                }
+                catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
+                {
+                    lastNonFatalException = ex;
+                }
+
+                Thread.Sleep(300);
+            }
+
+            if (nativeDialogDetected && TryFindNativeFileDialog(out _, out _))
+            {
+                nativeDialogCleanupAttempted = true;
+                if (TryCleanupNativeFileDialogAfterAudioSend(out string cleanupDiagnostic))
+                {
+                    nativeDialogDiagnostic = $"{nativeDialogDiagnostic}; limpieza post-timeout: {cleanupDiagnostic}";
+                }
+                else
+                {
+                    nativeDialogDiagnostic = $"{nativeDialogDiagnostic}; limpieza post-timeout fallida: {cleanupDiagnostic}";
+                }
+            }
+            else if (nativeDialogDetected && TryFindValidatedPossibleNativeFileDialog(out _, out _, out _))
+            {
+                nativeDialogCleanupAttempted = true;
+                if (TryDismissPossibleNativeFileDialog(out string cleanupDiagnostic))
+                {
+                    nativeDialogDiagnostic = $"{nativeDialogDiagnostic}; limpieza post-timeout: {cleanupDiagnostic}";
+                }
+                else
+                {
+                    nativeDialogDiagnostic = $"{nativeDialogDiagnostic}; limpieza post-timeout fallida: {cleanupDiagnostic}";
+                }
+            }
+
+            string failureDiagnostic =
+                $"timeout=45000ms; espera={FormatElapsedMilliseconds(startedAt)}; " +
+                $"baseline={baseline.Diagnostic}; actual={CaptureOutgoingAudioBaseline().Diagnostic}; " +
+                $"dialogo nativo detectado={FormatDiagnosticFlag(nativeDialogDetected)}; " +
+                $"limpieza dialogo intentada={FormatDiagnosticFlag(nativeDialogCleanupAttempted)}; " +
+                $"dialogo nativo={FormatDiagnosticValue(nativeDialogDiagnostic)}";
+            if (lastNonFatalException != null)
+            {
+                failureDiagnostic += $"; ultimo error no fatal={SummarizeExceptionMessage(lastNonFatalException)}";
+            }
+
+            return new AudioSendCompletionResult
+            {
+                Success = false,
+                Reason = "preview visible o no confirmado y sin mensaje saliente de audio",
+                PreviewClosed = false,
+                OutgoingAudioDetected = false,
+                NativeDialogDetected = nativeDialogDetected,
+                NativeDialogCleanupAttempted = nativeDialogCleanupAttempted,
+                Warning = "",
+                Diagnostic = failureDiagnostic
+            };
         }
 
-        private bool VerifyAudioSendCompleted(WebDriverWait wait, string fileName)
+        private bool IsAttachmentPreviewClosed(string fileName)
         {
-            _ = fileName;
-            WaitForPreviewToClose(wait);
-            return true;
+            try
+            {
+                bool trackedPreviewClosed = activeAttachmentPreview == null || IsElementGoneOrHidden(activeAttachmentPreview);
+                bool noRecognizablePreview = FindAttachmentPreview(driver, fileName) == null && FindAttachmentPreview(driver, "") == null;
+                return trackedPreviewClosed && noRecognizablePreview;
+            }
+            catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
+            {
+                return false;
+            }
+        }
+
+        private bool IsPreviewSendButtonGone(string fileName)
+        {
+            try
+            {
+                var currentPreview = FindAttachmentPreview(driver, fileName) ?? FindAttachmentPreview(driver, "");
+                return currentPreview != null && FindPreviewSendButton(currentPreview) == null;
+            }
+            catch (StaleElementReferenceException)
+            {
+                return true;
+            }
+            catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
+            {
+                return false;
+            }
+        }
+
+        private AudioOutgoingBaseline CaptureOutgoingAudioBaseline()
+        {
+            try
+            {
+                var outgoingMessages = FindOutgoingMessageCandidates(driver);
+                int outgoingAudioMessageCount = 0;
+                int outgoingAudioControlCount = 0;
+                string lastSignature = "";
+                bool lastHasAudio = false;
+                int lastAudioControlCount = 0;
+
+                for (int index = 0; index < outgoingMessages.Count; index++)
+                {
+                    IWebElement message = outgoingMessages[index];
+                    int controlCount = CountOutgoingAudioSignalElements(message);
+                    bool hasAudio = controlCount > 0 || HasOutgoingAudioSignal(message);
+                    if (hasAudio)
+                    {
+                        outgoingAudioMessageCount++;
+                    }
+
+                    outgoingAudioControlCount += controlCount;
+
+                    if (index == outgoingMessages.Count - 1)
+                    {
+                        lastSignature = BuildOutgoingMessageSignature(message, index, hasAudio, controlCount);
+                        lastHasAudio = hasAudio;
+                        lastAudioControlCount = controlCount;
+                    }
+                }
+
+                string diagnostic = BuildOutgoingBaselineDiagnostic(
+                    outgoingMessages.Count,
+                    outgoingAudioMessageCount,
+                    outgoingAudioControlCount,
+                    lastSignature,
+                    lastHasAudio,
+                    lastAudioControlCount);
+
+                return new AudioOutgoingBaseline
+                {
+                    IsAvailable = true,
+                    OutgoingMessageCount = outgoingMessages.Count,
+                    OutgoingAudioMessageCount = outgoingAudioMessageCount,
+                    OutgoingAudioControlCount = outgoingAudioControlCount,
+                    LastOutgoingMessageSignature = lastSignature,
+                    LastOutgoingMessageHasAudio = lastHasAudio,
+                    LastOutgoingMessageAudioControlCount = lastAudioControlCount,
+                    Diagnostic = diagnostic
+                };
+            }
+            catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
+            {
+                return new AudioOutgoingBaseline
+                {
+                    IsAvailable = false,
+                    Diagnostic = $"no disponible ({SummarizeExceptionMessage(ex)})"
+                };
+            }
+        }
+
+        private bool TryDetectNewOutgoingAudioMessage(AudioOutgoingBaseline baseline, out string diagnostic)
+        {
+            AudioOutgoingBaseline current = CaptureOutgoingAudioBaseline();
+            if (!baseline.IsAvailable || !current.IsAvailable)
+            {
+                diagnostic = $"baseline[{baseline.Diagnostic}]; actual[{current.Diagnostic}]; senales=no evaluables";
+                return false;
+            }
+
+            var signals = new List<string>();
+
+            if (current.OutgoingAudioMessageCount > baseline.OutgoingAudioMessageCount)
+            {
+                signals.Add($"mensajes salientes con audio {baseline.OutgoingAudioMessageCount}->{current.OutgoingAudioMessageCount}");
+            }
+
+            if (current.OutgoingAudioControlCount > baseline.OutgoingAudioControlCount)
+            {
+                signals.Add($"controles audio salientes {baseline.OutgoingAudioControlCount}->{current.OutgoingAudioControlCount}");
+            }
+
+            bool lastOutgoingChanged = !string.Equals(
+                current.LastOutgoingMessageSignature,
+                baseline.LastOutgoingMessageSignature,
+                StringComparison.Ordinal);
+            if (lastOutgoingChanged && current.LastOutgoingMessageHasAudio)
+            {
+                signals.Add("ultimo mensaje saliente cambio y contiene senales de audio");
+            }
+
+            if (current.OutgoingMessageCount > baseline.OutgoingMessageCount && current.LastOutgoingMessageHasAudio)
+            {
+                signals.Add($"mensajes salientes {baseline.OutgoingMessageCount}->{current.OutgoingMessageCount} y ultimo con audio");
+            }
+
+            diagnostic =
+                $"baseline[{baseline.Diagnostic}]; actual[{current.Diagnostic}]; " +
+                $"senales={FormatDiagnosticValue(signals.Count == 0 ? "ninguna" : string.Join(", ", signals))}";
+            return signals.Count > 0;
+        }
+
+        private static IReadOnlyList<IWebElement> FindOutgoingMessageCandidates(ISearchContext searchContext)
+        {
+            var candidates = new List<IWebElement>();
+            try
+            {
+                foreach (var candidate in searchContext.FindElements(By.XPath(Selectors.OutgoingMessageXPath)))
+                {
+                    if (!IsOutgoingMessageCandidateUsable(candidate) || ContainsEquivalentOutgoingElement(candidates, candidate))
+                    {
+                        continue;
+                    }
+
+                    candidates.Add(candidate);
+                }
+            }
+            catch (StaleElementReferenceException)
+            {
+            }
+            catch (WebDriverException)
+            {
+            }
+
+            return candidates;
+        }
+
+        private static bool IsOutgoingMessageCandidateUsable(IWebElement candidate)
+        {
+            try
+            {
+                return candidate.Displayed && !IsInsideFooter(candidate);
+            }
+            catch (StaleElementReferenceException)
+            {
+                return false;
+            }
+            catch (WebDriverException)
+            {
+                return false;
+            }
+        }
+
+        private static bool ContainsEquivalentOutgoingElement(IEnumerable<IWebElement> elements, IWebElement candidate)
+        {
+            foreach (var element in elements)
+            {
+                try
+                {
+                    if (element.Equals(candidate))
+                    {
+                        return true;
+                    }
+                }
+                catch (WebDriverException)
+                {
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasOutgoingAudioSignal(IWebElement message)
+        {
+            return CountOutgoingAudioSignalElements(message) > 0;
+        }
+
+        private static int CountOutgoingAudioSignalElements(IWebElement message)
+        {
+            try
+            {
+                int count = 0;
+                foreach (var signal in message.FindElements(By.XPath(Selectors.OutgoingAudioSignalXPath)))
+                {
+                    if (IsAudioSignalElementUsable(signal))
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
+            }
+            catch (StaleElementReferenceException)
+            {
+                return 0;
+            }
+            catch (WebDriverException)
+            {
+                return 0;
+            }
+        }
+
+        private static bool IsAudioSignalElementUsable(IWebElement signal)
+        {
+            try
+            {
+                return string.Equals(signal.TagName, "audio", StringComparison.OrdinalIgnoreCase) || signal.Displayed;
+            }
+            catch (StaleElementReferenceException)
+            {
+                return false;
+            }
+            catch (WebDriverException)
+            {
+                return false;
+            }
+        }
+
+        private static string BuildOutgoingMessageSignature(
+            IWebElement message,
+            int index,
+            bool hasAudio,
+            int audioControlCount)
+        {
+            try
+            {
+                string dataId = message.GetAttribute("data-id") ?? "";
+                string dataPlainText = message.GetAttribute("data-pre-plain-text") ?? "";
+                string role = message.GetAttribute("role") ?? "";
+                string className = message.GetAttribute("class") ?? "";
+                var size = message.Size;
+                return $"{index}|{dataId}|{dataPlainText}|{role}|{className}|audio={hasAudio}|controls={audioControlCount}|size={size.Width}x{size.Height}";
+            }
+            catch (StaleElementReferenceException)
+            {
+                return $"{index}|stale|audio={hasAudio}|controls={audioControlCount}";
+            }
+            catch (WebDriverException)
+            {
+                return $"{index}|no-disponible|audio={hasAudio}|controls={audioControlCount}";
+            }
+        }
+
+        private static string BuildOutgoingBaselineDiagnostic(
+            int outgoingMessageCount,
+            int outgoingAudioMessageCount,
+            int outgoingAudioControlCount,
+            string lastSignature,
+            bool lastHasAudio,
+            int lastAudioControlCount)
+        {
+            return
+                $"mensajes salientes={outgoingMessageCount}; " +
+                $"mensajes salientes audio={outgoingAudioMessageCount}; " +
+                $"controles audio salientes={outgoingAudioControlCount}; " +
+                $"ultimo hash={BuildDiagnosticFingerprint(lastSignature)}; " +
+                $"ultimo audio={FormatDiagnosticFlag(lastHasAudio)}; " +
+                $"ultimo controles audio={lastAudioControlCount}";
+        }
+
+        private static string BuildDiagnosticFingerprint(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "(ninguno)";
+            }
+
+            unchecked
+            {
+                ulong hash = 1469598103934665603UL;
+                foreach (char character in value)
+                {
+                    hash ^= character;
+                    hash *= 1099511628211UL;
+                }
+
+                return hash.ToString("X16");
+            }
         }
 
         private WhatsAppSendResult? EnsureWhatsAppInteractableAfterAttachmentAttempt(
@@ -1957,18 +2409,30 @@ namespace Automate_Whatsapp.Logic
             Exception? attachmentException = null,
             string stage = AudioAttachStage.NativeDialogUpload)
         {
-            bool nativeDialogDetected = TryFindNativeFileDialog(out _, out string dialogTitle);
-            if (!nativeDialogDetected && !IsPotentialNativeFileDialogBlock(attachmentException))
+            bool strictNativeDialogDetected = TryFindNativeFileDialog(out _, out string dialogTitle);
+            bool validatedPossibleNativeDialogDetected = false;
+            string possibleDialogDiagnostic = "";
+            if (!strictNativeDialogDetected)
+            {
+                validatedPossibleNativeDialogDetected = TryFindValidatedPossibleNativeFileDialog(out _, out dialogTitle, out possibleDialogDiagnostic);
+            }
+
+            if (!strictNativeDialogDetected && !validatedPossibleNativeDialogDetected)
             {
                 return null;
             }
 
-            if (TryDismissNativeFileDialog() && WaitForWhatsAppInteractable(wait))
+            LogAudioStage(stage, "Diálogo nativo de archivo detectado; intentando cerrar");
+            bool dismissed = strictNativeDialogDetected
+                ? TryDismissNativeFileDialog()
+                : TryDismissPossibleNativeFileDialog(out _);
+
+            if (dismissed && WaitForWhatsAppInteractable(wait))
             {
                 var issue = GetHealthIssue();
                 if (issue.IsReady)
                 {
-                    string recoveredMessage = BuildAudioStageFailureMessage(stage, "Se detectó posible diálogo nativo de archivo abierto. Se cerró y se marcó el envío de audio como fallido.");
+                    string recoveredMessage = BuildAudioStageFailureMessage(stage, "Diálogo nativo de archivo detectado; se cerró y se marcó el envío de audio como fallido.");
                     log(recoveredMessage);
                     return WhatsAppSendResult.Failure(
                         WhatsAppHealthStatus.WhatsAppAttachmentFailed,
@@ -1979,7 +2443,7 @@ namespace Automate_Whatsapp.Logic
 
                 string notReadyAfterDismissMessage = BuildAudioStageFailureMessage(
                     stage,
-                    "Se detectó posible diálogo nativo de archivo abierto y se intentó cerrarlo, " +
+                    "Diálogo nativo de archivo detectado y se intentó cerrarlo, " +
                     $"pero WhatsApp no volvió a estar listo. Estado: {issue.Status}. {issue.Message}");
                 log(notReadyAfterDismissMessage);
                 return WhatsAppSendResult.Failure(issue.Status, notReadyAfterDismissMessage, issue.IsGlobalFailure, attachmentException ?? issue.Exception);
@@ -1990,9 +2454,9 @@ namespace Automate_Whatsapp.Logic
                 : dialogTitle;
             string unrecoveredMessage = BuildAudioStageFailureMessage(
                 stage,
-                "Se detectó posible diálogo nativo de archivo abierto durante el adjunto de audio, " +
+                "Diálogo nativo de archivo detectado durante el adjunto de audio, " +
                 "pero no se pudo confirmar su cierre ni recuperar WhatsApp Web. " +
-                $"Título detectado: {FormatDiagnosticValue(stillOpenTitle)}. Se detiene la corrida para evitar continuar en estado bloqueado.");
+                $"Título detectado: {FormatDiagnosticValue(stillOpenTitle)}. {possibleDialogDiagnostic} Se detiene la corrida para evitar continuar en estado bloqueado.");
             log(unrecoveredMessage);
 
             return WhatsAppSendResult.Failure(
@@ -2046,9 +2510,16 @@ namespace Automate_Whatsapp.Logic
         {
             diagnostic = "No se detectó diálogo nativo pendiente.";
 
+            bool possibleValidatedDialog = false;
             if (!TryFindNativeFileDialog(out IntPtr dialogHandle, out string dialogTitle))
             {
-                return true;
+                if (!TryFindValidatedPossibleNativeFileDialog(out dialogHandle, out dialogTitle, out string possibleDiagnostic))
+                {
+                    return true;
+                }
+
+                possibleValidatedDialog = true;
+                diagnostic = possibleDiagnostic;
             }
 
             if (context == "despues del envio")
@@ -2066,7 +2537,7 @@ namespace Automate_Whatsapp.Logic
                 PostEscapeToWindow(dialogHandle);
                 Thread.Sleep(1000);
 
-                if (!TryFindNativeFileDialog(out _, out _))
+                if (!IsNativeFileDialogStillPresent(possibleValidatedDialog))
                 {
                     diagnostic = "Diálogo nativo cerrado con Escape.";
                     return true;
@@ -2075,7 +2546,7 @@ namespace Automate_Whatsapp.Logic
                 PostMessage(dialogHandle, WmClose, IntPtr.Zero, IntPtr.Zero);
                 Thread.Sleep(1000);
 
-                if (!TryFindNativeFileDialog(out _, out _))
+                if (!IsNativeFileDialogStillPresent(possibleValidatedDialog))
                 {
                     diagnostic = "Diálogo nativo cerrado con WM_CLOSE.";
                     return true;
@@ -2089,6 +2560,17 @@ namespace Automate_Whatsapp.Logic
                 diagnostic = $"No se pudo cerrar el diálogo nativo {context}. Error: {SummarizeExceptionMessage(ex)}";
                 return false;
             }
+        }
+
+        private static bool IsNativeFileDialogStillPresent(bool includeValidatedPossible)
+        {
+            if (TryFindNativeFileDialog(out _, out _))
+            {
+                return true;
+            }
+
+            return includeValidatedPossible
+                && TryFindValidatedPossibleNativeFileDialog(out _, out _, out _);
         }
 
         private NativeDialogUploadResult TryUploadFileThroughNativeDialog(string fullAudioPath)
@@ -2395,6 +2877,24 @@ namespace Automate_Whatsapp.Logic
             dialogHandle = candidate?.Handle ?? IntPtr.Zero;
             title = candidate?.Title ?? "";
             diagnostic = BuildNativeFileDialogDiagnostic(allCandidates, handlesBeforeReference);
+            return dialogHandle != IntPtr.Zero;
+        }
+
+        private static bool TryFindValidatedPossibleNativeFileDialog(
+            out IntPtr dialogHandle,
+            out string title,
+            out string diagnostic)
+        {
+            var allCandidates = GetNativeFileDialogCandidates();
+            var candidate = allCandidates
+                .Where(CanSafelyDismissPossibleNativeDialog)
+                .OrderByDescending(window => window.HasStrictTitle)
+                .ThenByDescending(window => window.HasPossibleTitle)
+                .FirstOrDefault();
+
+            dialogHandle = candidate?.Handle ?? IntPtr.Zero;
+            title = candidate?.Title ?? "";
+            diagnostic = BuildNativeFileDialogDiagnostic(allCandidates, null);
             return dialogHandle != IntPtr.Zero;
         }
 
