@@ -94,22 +94,33 @@ Motivos:
 - Algunas versiones de WhatsApp Web exponen el input de audio solo despues de activar la opcion visible `Audio`.
 - Selenium adjunta el archivo con `input.SendKeys(fullAudioPath)` cuando existe input compatible; si WhatsApp abre el dialogo nativo tras activar `Audio`, se usa como fallback controlado.
 - Se considera compatible solo un input cuyo `accept` contenga `audio`, `.ogg`, `.opus`, `.mp3`, `.m4a` o `.wav`.
-- La opcion `Audio` se localiza con texto visible, SVG con `title` `ic-headphones-filled` y ancestros clickeables `li`, `div`, `button`, `role='button'` o `tabindex`.
+- La opcion `Audio` se localiza como una lista ordenada de candidatos: primero elementos `role='button'` o `role='menuitem'`, luego `button`, `li` o `tabindex='0'`, despues ancestros comunes que combinen texto `Audio` e icono `ic-headphones-filled`, filas del menu de adjuntos y finalmente el selector legacy basado en `li`.
+- Los `div` no se aceptan por si solos: deben tener senales de item de menu, tamano razonable, texto exacto `Audio` o icono de audifonos, estar dentro o asociados al menu de adjuntos, y no pertenecer al footer del chat ni ser un contenedor interno de tipografia.
 - `SendKeys` solo confirma que Selenium entrego la ruta al input; no confirma que WhatsApp haya creado el adjunto ni que el envio haya salido.
 - Si WhatsApp abre el dialogo nativo `Abrir/Open`, la app debe cargar la ruta del audio o cerrar el dialogo antes de continuar.
+- La deteccion del dialogo nativo se separa en estricta y amplia. La estricta exige clase `#32770`, titulo `Abrir/Open` y proceso compatible con Chrome; solo esa ruta permite pegar la ruta del archivo.
+- La deteccion amplia se usa despues del click en `Audio` y en diagnosticos: considera titulos localizados como `Seleccionar`, `Choose`, `File Upload` o `Cargar`, y ventanas `#32770` visibles que aparecen durante la ventana post-click. Esas ventanas no se manipulan ni reciben rutas si no se validan antes.
+- Cuando se usa el dialogo nativo validado, la subida devuelve un resultado con estado: ruta entregada y dialogo cerrado, ruta entregada pero dialogo aun abierto, o error. Un dialogo aun abierto no es fallo inmediato si WhatsApp llega a mostrar preview.
 - No se usan clases CSS obfuscadas de WhatsApp porque cambian con frecuencia entre WhatsApp normal y Business.
 
 Consecuencia operativa:
 
 - Tras abrir adjuntos, la app enumera los `input[type=file]`, registra cuantos hay y sus `accept`, y usa un input compatible si ya existe.
-- Si solo hay inputs no compatibles, como `image/*`, pero la opcion `Audio` esta visible, la app hace click robusto en esa opcion, vuelve a enumerar inputs y usa el input de audio que aparezca despues.
+- Si solo hay inputs no compatibles, como `image/*`, pero la opcion `Audio` esta visible, la app diagnostica los candidatos de Audio y los prueba en orden hasta que un click produzca un efecto real: input de audio, dialogo nativo `Abrir/Open`, preview de adjunto o cambio en los inputs file.
+- Cada candidato registra indice, origen del selector, tag, `role`, `tabindex`, `aria-label`, texto visible corto, tamano, `pointer-events`, cursor, presencia del icono `ic-headphones-filled` y si esta dentro de `[role='menu']`.
+- Si un candidato cierra el menu sin producir efecto, la app reabre adjuntos una sola vez, recompone la lista de candidatos y reintenta. Si se agotan los candidatos, el fallo conserva el diagnostico de los elementos probados.
+- Despues de cada click candidato, la app espera hasta 5 segundos por input de audio, preview, dialogo estricto o dialogo posible. El log del resultado incluye el efecto detectado y el tiempo esperado; si no hubo efecto, conserva inputs actuales y diagnostico de dialogos.
+- Si todos los candidatos fallan, el error final incluye cantidad de candidatos por pasada, resumen de candidatos intentados, inputs antes y despues del click, dialogo nativo detectado y health actual.
 - Despues de `SendKeys`, la app espera un preview de adjunto con varias senales UI: `role='dialog'`, nombre de archivo cuando esta visible, boton enviar contenido en el panel y controles de preview de adjunto.
 - El boton enviar se busca dentro del preview detectado; no se usa un selector global del chat para enviar audios.
 - El log de exito solo se emite despues de entregar el path al input, detectar el preview, hacer click en el boton enviar del preview y comprobar que el preview se cerro.
 - El flujo registra etapas `AudioAttach.OpenMenu`, `AudioAttach.FindInputBeforeClick`, `AudioAttach.ClickAudioOption`, `AudioAttach.FindInputAfterClick`, `AudioAttach.NativeDialogUpload`, `AudioAttach.WaitPreview`, `AudioAttach.ClickPreviewSend`, `AudioAttach.WaitPreviewClose` y `AudioAttach.Done`.
 - Los fallos de audio incluyen en una linea la etapa, inputs file detectados, accepts detectados, presencia de texto `Audio`, presencia del icono `ic-headphones-filled`, dialogo nativo detectado y health actual de WhatsApp.
 - Si WhatsApp no muestra preview, si no hay boton enviar dentro del preview o si el preview no se cierra despues del click, el contacto falla con `WhatsAppAttachmentFailed` no global.
-- Si despues del click en `Audio` se abre el dialogo nativo `Abrir/Open`, la app lo trae al frente, pega `fullAudioPath` desde el portapapeles y presiona Enter; solo sigue si el dialogo se cierra y despues aparece preview.
+- Si despues del click en `Audio` se abre el dialogo nativo `Abrir/Open`, la app lo trae al frente, pega `fullAudioPath` desde el portapapeles y presiona Enter; sigue si el dialogo se cierra o si WhatsApp muestra preview.
+- Despues de cargar por dialogo nativo, la app no cierra inmediatamente `Abrir/Open` antes del preview. Primero espera que el dialogo se cierre solo, que WhatsApp muestre preview o que expire el timeout.
+- Si el preview aparece aunque el dialogo nativo siga abierto, se considera que WhatsApp recibio el archivo, se envia desde el preview y la limpieza visual del dialogo queda para despues del envio confirmado.
+- Si no aparece preview y el dialogo nativo sigue abierto, entonces se intenta cerrar y el contacto falla sin marcar el audio como enviado.
 - Como defensa, despues de abrir adjuntos, despues de entregar el path al input o dialogo, ante fallos de preview y antes del exito se busca un dialogo nativo de archivo de Chrome con titulo `Abrir` u `Open`; si aparece fuera del fallback esperado, se intenta cerrar con Escape y se valida que WhatsApp vuelva a estar interactuable.
 - Despues de confirmar que el preview se cerro, el envio ya se considera confirmado; si queda abierto un dialogo nativo `Abrir/Open`, la app intenta limpiarlo con Escape y, si sigue abierto, con `WM_CLOSE` sobre el handle del dialogo.
 - Si esa limpieza post-envio falla, se registra advertencia pero no se marca fallido ni se reintenta el audio para evitar duplicados.

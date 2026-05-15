@@ -1,5 +1,6 @@
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
+using OpenQA.Selenium.Interactions;
 using OpenQA.Selenium.Support.UI;
 using SeleniumExtras.WaitHelpers;
 using System.Diagnostics;
@@ -30,6 +31,22 @@ namespace Automate_Whatsapp.Logic
             ".m4a",
             ".wav"
         };
+        private static readonly string[] PossibleNativeFileDialogTitleMarkers =
+        {
+            "Abrir",
+            "Open",
+            "Seleccionar",
+            "Choose",
+            "File Upload",
+            "Cargar"
+        };
+        private static readonly string[] BrowserNativeDialogProcessMarkers =
+        {
+            "chrome",
+            "chromedriver",
+            "msedge",
+            "msedgedriver"
+        };
         private const int NativeWindowTextMaxLength = 256;
         private const int WmKeyDown = 0x0100;
         private const int WmKeyUp = 0x0101;
@@ -47,6 +64,55 @@ namespace Automate_Whatsapp.Logic
             public const string ClickPreviewSend = "AudioAttach.ClickPreviewSend";
             public const string WaitPreviewClose = "AudioAttach.WaitPreviewClose";
             public const string Done = "AudioAttach.Done";
+        }
+
+        private enum AudioOptionClickEffect
+        {
+            None,
+            AudioInput,
+            NativeDialog,
+            PossibleNativeDialog,
+            AttachmentPreview,
+            FileInputsChanged
+        }
+
+        private enum NativeDialogUploadStatus
+        {
+            DialogClosed,
+            DialogStillOpen,
+            Error
+        }
+
+        private sealed class NativeDialogUploadResult
+        {
+            public bool Success { get; init; }
+            public NativeDialogUploadStatus Status { get; init; }
+            public string Diagnostic { get; init; } = "";
+        }
+
+        private sealed class AudioOptionCandidateLocator
+        {
+            public string Origin { get; init; } = "";
+            public By Locator { get; init; } = By.XPath(".");
+        }
+
+        private sealed class AudioOptionCandidateInfo
+        {
+            public IWebElement Element { get; init; } = null!;
+            public string Origin { get; init; } = "";
+        }
+
+        private sealed class NativeDialogWindowInfo
+        {
+            public IntPtr Handle { get; init; }
+            public string Title { get; init; } = "";
+            public string ClassName { get; init; } = "";
+            public uint ProcessId { get; init; }
+            public string ProcessName { get; init; } = "";
+            public bool IsBrowserProcess { get; init; }
+            public bool HasStrictTitle { get; init; }
+            public bool HasPossibleTitle { get; init; }
+            public bool AppearedAfterReference { get; init; }
         }
 
         private readonly IWebDriver driver;
@@ -69,6 +135,9 @@ namespace Automate_Whatsapp.Logic
 
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
 
         [DllImport("user32.dll")]
         private static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -184,9 +253,9 @@ namespace Automate_Whatsapp.Logic
             public const string AttachmentPreviewDialogXPath = "//div[@role='dialog']";
             public const string AudioVisibleTextXPath = "//*[normalize-space(translate(., '" + XPathUppercase + "', '" + XPathLowercase + "'))='audio']";
             public const string AudioHeadphonesIconXPath = "//*[local-name()='title' and normalize-space()='ic-headphones-filled']";
-            private const string ClickableAudioOptionXPath = "self::li or self::div or self::button or @role='button' or @tabindex";
-            private const string EnabledClickableAudioOptionXPath = "(" + ClickableAudioOptionXPath + ") and not(@aria-disabled='true')";
-            private const string AudioTextConditionXPath = "normalize-space(translate(., '" + XPathUppercase + "', '" + XPathLowercase + "'))='audio'";
+            public const string AudioTextConditionXPath = "normalize-space(translate(., '" + XPathUppercase + "', '" + XPathLowercase + "'))='audio'";
+            private const string AudioTextOrDescendantConditionXPath = AudioTextConditionXPath + " or .//*[" + AudioTextConditionXPath + "]";
+            private const string EnabledElementXPath = "not(@aria-disabled='true') and not(@disabled)";
             private const string PreviewElementText = "normalize-space(translate(concat(@aria-label, ' ', @title, ' ', @data-icon), '" + XPathUppercase + "', '" + XPathLowercase + "'))";
             public const string AttachmentPreviewPanelXPath = "//*[self::div or @role='dialog'][not(self::footer) and not(ancestor::footer) and not(.//footer) and .//*[@data-icon='wds-ic-send-filled' or @data-icon='send']]";
             public const string AttachmentPreviewControlsXPath = ".//*[self::audio or self::video or self::canvas or self::img or @contenteditable='true' or @role='textbox' or contains(" + PreviewElementText + ", 'caption') or contains(" + PreviewElementText + ", 'pie de foto') or contains(" + PreviewElementText + ", 'adjunto') or contains(" + PreviewElementText + ", 'archivo') or contains(" + PreviewElementText + ", 'document') or contains(" + PreviewElementText + ", 'audio')]";
@@ -209,13 +278,15 @@ namespace Automate_Whatsapp.Logic
                 By.XPath("//footer//div[@contenteditable='true' and @data-tab]")
             };
 
-            public static readonly By[] AudioOptionLocators =
+            public static readonly AudioOptionCandidateLocator[] AudioOptionCandidateLocators =
             {
-                By.XPath(AudioVisibleTextXPath + "/ancestor-or-self::*[" + EnabledClickableAudioOptionXPath + "][1]"),
-                By.XPath("//*[" + EnabledClickableAudioOptionXPath + " and (" + AudioTextConditionXPath + " or .//*[" + AudioTextConditionXPath + "])]"),
-                By.XPath(AudioHeadphonesIconXPath + "/ancestor::*[" + EnabledClickableAudioOptionXPath + "][1]"),
-                By.XPath("//*[" + EnabledClickableAudioOptionXPath + " and .//*[local-name()='title' and normalize-space()='ic-headphones-filled']]"),
-                By.XPath("//li[@role='button' and @data-animate-dropdown-item='true' and .//span[normalize-space()='Audio']]")
+                new() { Origin = "role-button-menuitem-texto-audio", Locator = By.XPath("//*[" + EnabledElementXPath + " and (@role='button' or @role='menuitem') and (" + AudioTextOrDescendantConditionXPath + ")]") },
+                new() { Origin = "button-li-tabindex-texto-audio", Locator = By.XPath("//*[" + EnabledElementXPath + " and (self::button or self::li or @tabindex='0') and (" + AudioTextOrDescendantConditionXPath + ")]") },
+                new() { Origin = "texto-audio-mas-icono-headphones", Locator = By.XPath("//*[" + EnabledElementXPath + " and (" + AudioTextOrDescendantConditionXPath + ") and .//*[local-name()='title' and normalize-space()='ic-headphones-filled']]") },
+                new() { Origin = "fila-menu-role-menu-texto-audio", Locator = By.XPath("//*[@role='menu']//*[" + EnabledElementXPath + " and (self::li or self::button or @role='button' or @role='menuitem' or @tabindex='0' or self::div) and (" + AudioTextOrDescendantConditionXPath + ")]") },
+                new() { Origin = "ancestro-clickeable-texto-audio", Locator = By.XPath(AudioVisibleTextXPath + "/ancestor::*[" + EnabledElementXPath + " and (self::li or self::button or @role='button' or @role='menuitem' or @tabindex='0')][1]") },
+                new() { Origin = "ancestro-clickeable-icono-headphones", Locator = By.XPath(AudioHeadphonesIconXPath + "/ancestor::*[" + EnabledElementXPath + " and (self::li or self::button or @role='button' or @role='menuitem' or @tabindex='0' or self::div)][1]") },
+                new() { Origin = "legacy-li-dropdown-audio", Locator = By.XPath("//li[@role='button' and @data-animate-dropdown-item='true' and .//*[" + AudioTextConditionXPath + "]]") }
             };
         }
 
@@ -466,13 +537,32 @@ namespace Automate_Whatsapp.Logic
                 bool attachmentMenuOpened = false;
                 IWebElement? audioInput = null;
                 bool uploadedThroughNativeDialog = false;
+                bool nativeDialogStillOpenAfterUpload = false;
+                bool attachmentAlreadyInPreview = false;
+                NativeDialogUploadResult? nativeDialogUploadResult = null;
                 string audioFileName = Path.GetFileName(fullAudioPath);
+                bool UploadAudioThroughNativeDialog(out string uploadError)
+                {
+                    uploadError = "";
+                    NativeDialogUploadResult uploadResult = TryUploadFileThroughNativeDialog(fullAudioPath);
+                    nativeDialogUploadResult = uploadResult;
+                    if (uploadResult.Success)
+                    {
+                        uploadedThroughNativeDialog = true;
+                        nativeDialogStillOpenAfterUpload = uploadResult.Status == NativeDialogUploadStatus.DialogStillOpen;
+                        LogAudioStage(AudioAttachStage.NativeDialogUpload, uploadResult.Diagnostic);
+                        return true;
+                    }
+
+                    uploadError = uploadResult.Diagnostic;
+                    return false;
+                }
+
                 if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, stage: AudioAttachStage.OpenMenu) is { } blockedAfterAttach)
                 {
                     return blockedAfterAttach;
                 }
 
-                IWebElement? audioOption = null;
                 LogAudioStage(AudioAttachStage.FindInputBeforeClick, "buscando input de audio antes del click y opcion Audio visible");
                 try
                 {
@@ -485,8 +575,7 @@ namespace Automate_Whatsapp.Logic
                             return true;
                         }
 
-                        audioOption = FindAudioOption(d);
-                        return audioOption != null;
+                        return FindAudioOptionCandidates(d).Count > 0;
                     });
                 }
                 catch (WebDriverTimeoutException ex)
@@ -502,47 +591,101 @@ namespace Automate_Whatsapp.Logic
                 string inputsBeforeAudioClick = GetFileInputsOperationalSummary(driver);
                 if (audioInput == null)
                 {
-                    if (audioOption == null)
+                    IWebElement? bestAudioOption = FindBestClickableAudioOption(driver, out string audioOptionDiagnostics);
+                    if (bestAudioOption == null)
                     {
-                        return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputBeforeClick, $"no se encontro input[type=file] compatible con audio ni opcion Audio visible. Inputs antes del click: {inputsBeforeAudioClick}"));
+                        return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputBeforeClick, $"no se encontro input[type=file] compatible con audio ni opcion Audio visible. Inputs antes del click: {inputsBeforeAudioClick}. Candidatos Audio: {audioOptionDiagnostics}"));
                     }
 
-                    LogAudioStage(AudioAttachStage.ClickAudioOption, $"No se encontró input de audio antes del click; se intentará activar la opción Audio. {inputsBeforeAudioClick}");
+                    int audioOptionDiagnosticSeparator = audioOptionDiagnostics.IndexOf(';');
+                    string audioOptionCountDiagnostic = audioOptionDiagnosticSeparator >= 0
+                        ? audioOptionDiagnostics[..audioOptionDiagnosticSeparator]
+                        : audioOptionDiagnostics;
+                    LogAudioStage(AudioAttachStage.ClickAudioOption, $"No se encontró input de audio antes del click; se intentará activar la opción Audio. {inputsBeforeAudioClick}. {audioOptionCountDiagnostic}");
 
-                    try
+                    if (!TryClickAudioOptionAndWaitForEffect(wait, audioFileName, out AudioOptionClickEffect clickEffect, out string clickDiagnostics))
                     {
-                        ClickElementSafely(audioOption);
-                    }
-                    catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
-                    {
-                        if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, ex, AudioAttachStage.ClickAudioOption) is { } blockedAfterAudioClickFailure)
+                        if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, stage: AudioAttachStage.ClickAudioOption) is { } blockedAfterAudioClickFailure)
                         {
                             return blockedAfterAudioClickFailure;
                         }
 
-                        return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.ClickAudioOption, $"no se pudo hacer click en la opcion Audio. Inputs antes del click: {inputsBeforeAudioClick}"), ex);
+                        string inputsAfterFailedAudioClick = GetFileInputsOperationalSummary(driver);
+                        return AudioUiFailure(BuildAudioStageFailureMessage(
+                            AudioAttachStage.ClickAudioOption,
+                            "ningun candidato de la opcion Audio produjo efecto. " +
+                            $"Inputs antes del click: {inputsBeforeAudioClick}. " +
+                            $"Inputs despues del click: {inputsAfterFailedAudioClick}. " +
+                            $"Dialogo nativo detectado: {GetNativeFileDialogDiagnostic()}. " +
+                            $"{clickDiagnostics}"));
+                    }
+
+                    if (clickEffect == AudioOptionClickEffect.AttachmentPreview)
+                    {
+                        attachmentAlreadyInPreview = true;
                     }
 
                     string nativeUploadError = "";
-                    LogAudioStage(AudioAttachStage.FindInputAfterClick, "buscando input de audio despues del click en Audio o dialogo nativo esperado");
+                    LogAudioStage(AudioAttachStage.FindInputAfterClick, $"buscando input de audio despues del click en Audio, dialogo nativo esperado o preview. Efecto inicial: {FormatAudioOptionClickEffect(clickEffect)}");
+                    if (clickEffect == AudioOptionClickEffect.PossibleNativeDialog)
+                    {
+                        string possibleDialogDiagnostic = GetNativeFileDialogDiagnostic();
+                        LogAudioStage(AudioAttachStage.NativeDialogUpload, $"dialogo nativo posible detectado despues del click en Audio; validando antes de cargar ruta. {possibleDialogDiagnostic}");
+                        if (TryWaitForStrictNativeFileDialog(TimeSpan.FromSeconds(2), out _, out _))
+                        {
+                            LogAudioStage(AudioAttachStage.NativeDialogUpload, "dialogo nativo validado; cargando archivo por fallback controlado");
+                            if (!UploadAudioThroughNativeDialog(out string possibleNativeUploadError))
+                            {
+                                return NativeDialogUploadFailure(wait, possibleNativeUploadError);
+                            }
+                        }
+                        else
+                        {
+                            return PossibleNativeDialogFailure(wait, possibleDialogDiagnostic);
+                        }
+                    }
+
                     try
                     {
                         wait.Until(d =>
                         {
+                            if (uploadedThroughNativeDialog)
+                            {
+                                return true;
+                            }
+
                             audioInput = FindAudioFileInput(d);
                             if (audioInput != null)
                             {
                                 return true;
                             }
 
+                            if (FindAttachmentPreview(d, audioFileName) != null || FindAttachmentPreview(d, "") != null)
+                            {
+                                attachmentAlreadyInPreview = true;
+                                return true;
+                            }
+
                             if (TryFindNativeFileDialog(out _, out _))
                             {
                                 LogAudioStage(AudioAttachStage.NativeDialogUpload, "dialogo nativo detectado; cargando archivo por fallback controlado");
-                                if (TryUploadFileThroughNativeDialog(fullAudioPath, out nativeUploadError))
+                                _ = UploadAudioThroughNativeDialog(out nativeUploadError);
+
+                                return true;
+                            }
+
+                            if (TryFindPossibleNativeFileDialog(out _, out _, out string possibleDialogDiagnostic))
+                            {
+                                LogAudioStage(AudioAttachStage.NativeDialogUpload, $"dialogo nativo posible detectado durante espera post-click; validando antes de cargar ruta. {possibleDialogDiagnostic}");
+                                if (TryWaitForStrictNativeFileDialog(TimeSpan.FromSeconds(2), out _, out _))
                                 {
-                                    uploadedThroughNativeDialog = true;
+                                    LogAudioStage(AudioAttachStage.NativeDialogUpload, "dialogo nativo validado; cargando archivo por fallback controlado");
+                                    _ = UploadAudioThroughNativeDialog(out nativeUploadError);
+
+                                    return true;
                                 }
 
+                                nativeUploadError = "Se detecto un dialogo nativo posible, pero no se pudo validarlo como selector de archivo de Chrome. " + possibleDialogDiagnostic;
                                 return true;
                             }
 
@@ -554,11 +697,7 @@ namespace Automate_Whatsapp.Logic
                         if (TryFindNativeFileDialog(out _, out _))
                         {
                             LogAudioStage(AudioAttachStage.NativeDialogUpload, "dialogo nativo detectado tras timeout; cargando archivo por fallback controlado");
-                            if (TryUploadFileThroughNativeDialog(fullAudioPath, out nativeUploadError))
-                            {
-                                uploadedThroughNativeDialog = true;
-                            }
-                            else
+                            if (!UploadAudioThroughNativeDialog(out nativeUploadError))
                             {
                                 return NativeDialogUploadFailure(wait, nativeUploadError, ex);
                             }
@@ -567,21 +706,27 @@ namespace Automate_Whatsapp.Logic
                         {
                             string inputsAfterAudioClick = GetFileInputsOperationalSummary(driver);
                             return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputAfterClick,
-                                "despues de hacer click en Audio no aparecio input[type=file] compatible con audio ni dialogo nativo esperado. " +
+                                "despues de hacer click en Audio no aparecio input[type=file] compatible con audio, dialogo nativo esperado ni preview. " +
                                 $"Inputs antes del click: {inputsBeforeAudioClick}. " +
                                 $"Inputs despues del click: {inputsAfterAudioClick}. " +
-                                $"Sospecha dialogo nativo abierto: {GetNativeFileDialogDiagnostic()}"),
+                                $"Sospecha dialogo nativo abierto: {GetNativeFileDialogDiagnostic()}. " +
+                                $"Candidatos Audio intentados: {clickDiagnostics}"),
                                 ex);
                         }
                     }
 
                     if (!string.IsNullOrWhiteSpace(nativeUploadError))
                     {
+                        if (nativeUploadError.Contains("dialogo nativo posible", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return PossibleNativeDialogFailure(wait, nativeUploadError);
+                        }
+
                         return NativeDialogUploadFailure(wait, nativeUploadError);
                     }
                 }
 
-                if (audioInput == null && !uploadedThroughNativeDialog)
+                if (audioInput == null && !uploadedThroughNativeDialog && !attachmentAlreadyInPreview)
                 {
                     string inputsAfterAudioClick = GetFileInputsOperationalSummary(driver);
                     return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputAfterClick,
@@ -591,7 +736,7 @@ namespace Automate_Whatsapp.Logic
                         $"Sospecha dialogo nativo abierto: {GetNativeFileDialogDiagnostic()}"));
                 }
 
-                if (!uploadedThroughNativeDialog)
+                if (!uploadedThroughNativeDialog && !attachmentAlreadyInPreview)
                 {
                     LogAudioStage(AudioAttachStage.FindInputAfterClick, GetFileInputsOperationalSummary(driver));
                     log($"Input file de audio seleccionado: {GetSelectedFileInputDiagnostics(audioInput!)}");
@@ -605,22 +750,34 @@ namespace Automate_Whatsapp.Logic
                         return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputAfterClick, $"no se pudo enviar el archivo al input file de audio. {inputError}"));
                     }
                 }
+                else if (attachmentAlreadyInPreview)
+                {
+                    LogAudioStage(AudioAttachStage.FindInputAfterClick, "preview de adjunto ya detectado despues del click en Audio");
+                }
                 else
                 {
-                    LogAudioStage(AudioAttachStage.NativeDialogUpload, "archivo cargado mediante dialogo nativo controlado");
+                    string uploadDiagnostic = nativeDialogUploadResult?.Diagnostic ?? "archivo cargado mediante dialogo nativo controlado";
+                    LogAudioStage(AudioAttachStage.NativeDialogUpload, uploadDiagnostic);
                 }
 
-                if (!uploadedThroughNativeDialog)
+                if (!uploadedThroughNativeDialog && !attachmentAlreadyInPreview)
                 {
                     LogAudioStage(AudioAttachStage.FindInputAfterClick, "archivo enviado al input mediante input.SendKeys");
                 }
-                string attachmentCleanupStage = uploadedThroughNativeDialog ? AudioAttachStage.NativeDialogUpload : AudioAttachStage.FindInputAfterClick;
-                if (TryFindNativeFileDialog(out _, out _))
+                if (uploadedThroughNativeDialog)
                 {
-                    LogAudioStage(attachmentCleanupStage, "dialogo nativo pendiente despues de adjuntar; intentando cerrar antes de esperar preview");
+                    LogAudioStage(AudioAttachStage.NativeDialogUpload, "Dialogo nativo usado para cargar audio; esperando cierre o preview");
+                    if (nativeDialogStillOpenAfterUpload)
+                    {
+                        LogAudioStage(AudioAttachStage.NativeDialogUpload, "el dialogo nativo seguia abierto tras Enter; no se cerrara antes de esperar preview");
+                    }
+                }
+                else if (TryFindNativeFileDialog(out _, out _))
+                {
+                    LogAudioStage(AudioAttachStage.FindInputAfterClick, "dialogo nativo pendiente despues de input.SendKeys; intentando cerrar antes de esperar preview");
                     if (!TryCleanupNativeFileDialogAfterAttachmentAttempt(out string attachmentCleanupDiagnostic))
                     {
-                        return AudioUiFailure(BuildAudioStageFailureMessage(attachmentCleanupStage, $"no se pudo cerrar el dialogo nativo pendiente despues de adjuntar. {attachmentCleanupDiagnostic}"));
+                        return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputAfterClick, $"no se pudo cerrar el dialogo nativo pendiente despues de adjuntar. {attachmentCleanupDiagnostic}"));
                     }
 
                     log(attachmentCleanupDiagnostic);
@@ -631,9 +788,34 @@ namespace Automate_Whatsapp.Logic
                 try
                 {
                     attachmentPreview = WaitForAttachmentPreview(wait, audioFileName);
+                    if (uploadedThroughNativeDialog && TryFindNativeFileDialog(out _, out _))
+                    {
+                        LogAudioStage(AudioAttachStage.WaitPreview, "Preview apareció aunque el diálogo seguía abierto; se continuará y se limpiará post-envío");
+                    }
                 }
                 catch (WebDriverTimeoutException ex)
                 {
+                    if (uploadedThroughNativeDialog && nativeDialogStillOpenAfterUpload)
+                    {
+                        LogAudioStage(AudioAttachStage.WaitPreview, "No apareció preview; cerrando diálogo nativo pendiente y marcando fallo");
+                        if (TryFindNativeFileDialog(out _, out _))
+                        {
+                            if (TryCleanupNativeFileDialogAfterAttachmentAttempt(out string previewTimeoutCleanupDiagnostic))
+                            {
+                                log(previewTimeoutCleanupDiagnostic);
+                            }
+                            else
+                            {
+                                log($"No se pudo cerrar el diálogo nativo pendiente tras timeout de preview. {previewTimeoutCleanupDiagnostic}");
+                            }
+                        }
+
+                        return AudioUiFailure(BuildAudioStageFailureMessage(
+                            AudioAttachStage.WaitPreview,
+                            "No apareció preview despues de cargar el audio por dialogo nativo; se intento cerrar el dialogo nativo pendiente y se marca el contacto como fallido."),
+                            ex);
+                    }
+
                     if (EnsureWhatsAppInteractableAfterAttachmentAttempt(wait, ex, AudioAttachStage.WaitPreview) is { } blockedWithoutPreview)
                     {
                         return blockedWithoutPreview;
@@ -936,24 +1118,611 @@ namespace Automate_Whatsapp.Logic
             return null;
         }
 
-        private static IWebElement? FindAudioOption(ISearchContext searchContext)
+        private IWebElement? FindBestClickableAudioOption(ISearchContext searchContext, out string diagnostics)
         {
-            foreach (var locator in Selectors.AudioOptionLocators)
+            var candidates = FindAudioOptionCandidateInfos(searchContext);
+            diagnostics = BuildAudioOptionCandidatesDiagnostics(candidates);
+            return candidates.Count == 0 ? null : candidates[0].Element;
+        }
+
+        private static IReadOnlyList<IWebElement> FindAudioOptionCandidates(ISearchContext searchContext)
+        {
+            return FindAudioOptionCandidateInfos(searchContext)
+                .Select(candidate => candidate.Element)
+                .ToList();
+        }
+
+        private static IReadOnlyList<AudioOptionCandidateInfo> FindAudioOptionCandidateInfos(ISearchContext searchContext)
+        {
+            var candidates = new List<AudioOptionCandidateInfo>();
+            foreach (var candidateLocator in Selectors.AudioOptionCandidateLocators)
+            {
+                AddAudioOptionCandidates(candidates, searchContext, candidateLocator.Locator, candidateLocator.Origin);
+            }
+
+            return candidates;
+        }
+
+        private static void AddAudioOptionCandidates(
+            List<AudioOptionCandidateInfo> candidates,
+            ISearchContext searchContext,
+            By locator,
+            string origin)
+        {
+            try
+            {
+                foreach (var candidate in searchContext.FindElements(locator))
+                {
+                    if (IsLikelyAudioMenuItem(candidate) && !ContainsEquivalentElement(candidates, candidate))
+                    {
+                        candidates.Add(new AudioOptionCandidateInfo
+                        {
+                            Element = candidate,
+                            Origin = origin
+                        });
+                    }
+                }
+            }
+            catch (StaleElementReferenceException)
+            {
+            }
+            catch (WebDriverException)
+            {
+            }
+        }
+
+        private static bool ContainsEquivalentElement(IEnumerable<AudioOptionCandidateInfo> elements, IWebElement candidate)
+        {
+            foreach (var element in elements.Select(item => item.Element))
             {
                 try
                 {
-                    var audioOption = FirstDisplayed(searchContext.FindElements(locator));
-                    if (audioOption != null)
+                    if (element.Equals(candidate))
                     {
-                        return audioOption;
+                        return true;
                     }
                 }
-                catch (StaleElementReferenceException)
+                catch (WebDriverException)
                 {
                 }
             }
 
-            return null;
+            return false;
+        }
+
+        private static bool IsLikelyAudioMenuItem(IWebElement element)
+        {
+            try
+            {
+                if (!element.Displayed || !element.Enabled || IsInsideFooter(element))
+                {
+                    return false;
+                }
+
+                if (string.Equals(element.GetAttribute("aria-disabled"), "true", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                bool hasAudioText = ElementContainsExactAudioText(element);
+                bool hasHeadphonesIcon = ElementContainsHeadphonesIcon(element);
+                if (!hasAudioText && !hasHeadphonesIcon)
+                {
+                    return false;
+                }
+
+                string tagName = element.TagName ?? "";
+                string role = element.GetAttribute("role") ?? "";
+                string tabindex = element.GetAttribute("tabindex") ?? "";
+                bool isButtonLike =
+                    string.Equals(tagName, "button", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(tagName, "li", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(role, "button", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(role, "menuitem", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(tabindex, "0", StringComparison.OrdinalIgnoreCase);
+                bool isDiv = string.Equals(tagName, "div", StringComparison.OrdinalIgnoreCase);
+                bool isInsideMenu = IsInsideAttachmentMenuOrDropdown(element);
+                bool hasChildElements = ElementHasChildElements(element);
+
+                var size = element.Size;
+                bool hasReasonableMenuItemSize =
+                    size.Width >= 72
+                    && size.Height >= 28
+                    && size.Width <= 900
+                    && size.Height <= 180;
+                bool hasMinimalClickableSize = size.Width >= 40 && size.Height >= 20;
+
+                if (isButtonLike)
+                {
+                    return hasReasonableMenuItemSize || (isInsideMenu && hasMinimalClickableSize);
+                }
+
+                if (isDiv)
+                {
+                    if (!hasReasonableMenuItemSize || !hasChildElements)
+                    {
+                        return false;
+                    }
+
+                    return isInsideMenu || hasHeadphonesIcon;
+                }
+
+                return isInsideMenu && hasReasonableMenuItemSize && hasChildElements;
+            }
+            catch (StaleElementReferenceException)
+            {
+                return false;
+            }
+            catch (WebDriverException)
+            {
+                return false;
+            }
+        }
+
+        private static bool ElementContainsExactAudioText(IWebElement element)
+        {
+            if (ContainsExactAudioTextLine(ReadElementText(element)))
+            {
+                return true;
+            }
+
+            try
+            {
+                return AnyDisplayed(element.FindElements(By.XPath(".//*[" + Selectors.AudioTextConditionXPath + "]")));
+            }
+            catch (StaleElementReferenceException)
+            {
+                return false;
+            }
+            catch (WebDriverException)
+            {
+                return false;
+            }
+        }
+
+        private static bool ContainsExactAudioTextLine(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            var lines = text
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(line => line.Trim());
+
+            return lines.Any(line => string.Equals(line, "Audio", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool ElementContainsHeadphonesIcon(IWebElement element)
+        {
+            try
+            {
+                return element.FindElements(By.XPath(".//*[local-name()='title' and normalize-space()='ic-headphones-filled']")).Count > 0;
+            }
+            catch (StaleElementReferenceException)
+            {
+                return false;
+            }
+            catch (WebDriverException)
+            {
+                return false;
+            }
+        }
+
+        private static bool IsInsideAttachmentMenuOrDropdown(IWebElement element)
+        {
+            try
+            {
+                return element.FindElements(By.XPath("./ancestor-or-self::*[@role='menu' or @role='menuitem' or @data-animate-dropdown-item='true']")).Count > 0;
+            }
+            catch (StaleElementReferenceException)
+            {
+                return false;
+            }
+            catch (WebDriverException)
+            {
+                return false;
+            }
+        }
+
+        private static bool ElementHasChildElements(IWebElement element)
+        {
+            try
+            {
+                return element.FindElements(By.XPath("./*")).Count > 0;
+            }
+            catch (StaleElementReferenceException)
+            {
+                return false;
+            }
+            catch (WebDriverException)
+            {
+                return false;
+            }
+        }
+
+        private string BuildAudioOptionCandidatesDiagnostics(IReadOnlyList<AudioOptionCandidateInfo> candidates)
+        {
+            if (candidates.Count == 0)
+            {
+                return "candidatos Audio encontrados: 0";
+            }
+
+            var details = candidates
+                .Take(6)
+                .Select((candidate, index) => $"#{index + 1}: {GetAudioOptionCandidateDiagnostics(candidate)}")
+                .ToList();
+
+            if (candidates.Count > details.Count)
+            {
+                details.Add($"+{candidates.Count - details.Count} candidatos mas");
+            }
+
+            return $"candidatos Audio encontrados: {candidates.Count}; {string.Join(" | ", details)}";
+        }
+
+        private string GetAudioOptionCandidateDiagnostics(AudioOptionCandidateInfo candidate)
+        {
+            return GetAudioOptionCandidateDiagnostics(candidate.Element, candidate.Origin);
+        }
+
+        private string GetAudioOptionCandidateDiagnostics(IWebElement candidate, string origin)
+        {
+            try
+            {
+                if (driver is IJavaScriptExecutor js)
+                {
+                    object? result = js.ExecuteScript(
+                        "const e = arguments[0];" +
+                        "const r = e.getBoundingClientRect();" +
+                        "const s = window.getComputedStyle(e);" +
+                        "const text = (e.innerText || e.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 80);" +
+                        "const hasIcon = Array.from(e.querySelectorAll('title')).some(t => (t.textContent || '').trim() === 'ic-headphones-filled');" +
+                        "const inMenu = !!e.closest('[role=\"menu\"]');" +
+                        "return 'tag=' + e.tagName.toLowerCase()" +
+                        " + '; role=' + (e.getAttribute('role') || '(none)')" +
+                        " + '; tabindex=' + (e.getAttribute('tabindex') || '(none)')" +
+                        " + '; aria-label=' + (e.getAttribute('aria-label') || '(none)')" +
+                        " + '; texto=' + (text || '(vacio)')" +
+                        " + '; size=' + Math.round(r.width) + 'x' + Math.round(r.height)" +
+                        " + '; pointer-events=' + s.pointerEvents" +
+                        " + '; cursor=' + s.cursor" +
+                        " + '; icono=' + (hasIcon ? 'si' : 'no')" +
+                        " + '; en-menu=' + (inMenu ? 'si' : 'no');",
+                        candidate);
+
+                    if (result is string jsDiagnostic && !string.IsNullOrWhiteSpace(jsDiagnostic))
+                    {
+                        return $"origen={FormatDiagnosticValue(origin)}; {jsDiagnostic}";
+                    }
+                }
+
+                string tagName = candidate.TagName ?? "(sin tag)";
+                string role = candidate.GetAttribute("role") ?? "(none)";
+                string tabindex = candidate.GetAttribute("tabindex") ?? "(none)";
+                string ariaLabel = candidate.GetAttribute("aria-label") ?? "(none)";
+                var size = candidate.Size;
+                string text = BuildTextPreview(ReadElementText(candidate), 80);
+                return $"origen={FormatDiagnosticValue(origin)}; tag={tagName}; role={role}; tabindex={tabindex}; aria-label={ariaLabel}; texto={text}; size={size.Width}x{size.Height}; icono={FormatDiagnosticFlag(ElementContainsHeadphonesIcon(candidate))}; en-menu={FormatDiagnosticFlag(IsInsideAttachmentMenuOrDropdown(candidate))}";
+            }
+            catch (StaleElementReferenceException)
+            {
+                return $"origen={FormatDiagnosticValue(origin)}; stale";
+            }
+            catch (WebDriverException ex)
+            {
+                return $"origen={FormatDiagnosticValue(origin)}; no disponible ({SummarizeExceptionMessage(ex)})";
+            }
+        }
+
+        private bool TryClickAudioOptionAndWaitForEffect(
+            WebDriverWait wait,
+            string fileName,
+            out AudioOptionClickEffect effect,
+            out string diagnostics)
+        {
+            effect = AudioOptionClickEffect.None;
+            var attempts = new List<string>();
+            bool reopenedMenu = false;
+            var candidateBatchCounts = new List<int>();
+
+            for (int menuAttempt = 0; menuAttempt < 2; menuAttempt++)
+            {
+                var candidates = FindAudioOptionCandidateInfos(driver);
+                candidateBatchCounts.Add(candidates.Count);
+                string candidateSummary = BuildAudioOptionCandidatesDiagnostics(candidates);
+                LogAudioStage(AudioAttachStage.ClickAudioOption, candidateSummary);
+
+                if (candidates.Count == 0)
+                {
+                    attempts.Add(candidateSummary);
+                    if (!HasAttachmentMenuOpened(driver) && !reopenedMenu)
+                    {
+                        LogAudioStage(AudioAttachStage.ClickAudioOption, "el menu de adjuntos no tiene candidatos y parece cerrado; se reabrira una vez para recomputar candidatos");
+                        if (!TryReopenAttachmentMenu(wait, out string reopenError))
+                        {
+                            attempts.Add($"reapertura del menu fallida: {reopenError}");
+                            diagnostics = BuildAudioOptionClickAttemptsDiagnostics(attempts, candidateBatchCounts);
+                            return false;
+                        }
+
+                        reopenedMenu = true;
+                        continue;
+                    }
+                }
+
+                bool recomputeCandidates = false;
+                for (int index = 0; index < candidates.Count; index++)
+                {
+                    AudioOptionCandidateInfo candidate = candidates[index];
+                    string candidateDiagnostic = GetAudioOptionCandidateDiagnostics(candidate);
+                    LogAudioStage(AudioAttachStage.ClickAudioOption, $"intentando candidato Audio {index + 1}/{candidates.Count}: {candidateDiagnostic}");
+
+                    string inputsBeforeClick = GetFileInputsSignature(driver);
+                    IReadOnlySet<IntPtr> nativeDialogsBeforeClick = GetVisibleNativeDialogHandles();
+                    if (!TryClickAudioOptionCandidate(candidate.Element, out string clickError))
+                    {
+                        string failedClickDiagnostic = $"#{index + 1}: {candidateDiagnostic} => click fallido ({clickError})";
+                        attempts.Add(failedClickDiagnostic);
+                        LogAudioStage(AudioAttachStage.ClickAudioOption, failedClickDiagnostic);
+                        continue;
+                    }
+
+                    if (TryWaitForAudioOptionClickEffect(inputsBeforeClick, nativeDialogsBeforeClick, fileName, out effect, out string effectDiagnostic))
+                    {
+                        string successDiagnostic = $"#{index + 1}: {candidateDiagnostic} => {effectDiagnostic}";
+                        attempts.Add(successDiagnostic);
+                        LogAudioStage(AudioAttachStage.ClickAudioOption, $"click produjo efecto: {effectDiagnostic}");
+                        diagnostics = BuildAudioOptionClickAttemptsDiagnostics(attempts, candidateBatchCounts);
+                        return true;
+                    }
+
+                    string noOpDiagnostic = $"#{index + 1}: {candidateDiagnostic} => sin efecto ({effectDiagnostic})";
+                    attempts.Add(noOpDiagnostic);
+                    LogAudioStage(AudioAttachStage.ClickAudioOption, $"click sin efecto; {effectDiagnostic}");
+
+                    if (!HasAttachmentMenuOpened(driver) && !reopenedMenu)
+                    {
+                        LogAudioStage(AudioAttachStage.ClickAudioOption, "el menu de adjuntos se cerro sin efecto; se reabrira una vez para recomputar candidatos");
+                        if (!TryReopenAttachmentMenu(wait, out string reopenError))
+                        {
+                            attempts.Add($"reapertura del menu fallida: {reopenError}");
+                            diagnostics = BuildAudioOptionClickAttemptsDiagnostics(attempts, candidateBatchCounts);
+                            return false;
+                        }
+
+                        reopenedMenu = true;
+                        recomputeCandidates = true;
+                        break;
+                    }
+                }
+
+                if (!recomputeCandidates)
+                {
+                    break;
+                }
+            }
+
+            diagnostics = BuildAudioOptionClickAttemptsDiagnostics(attempts, candidateBatchCounts);
+            return false;
+        }
+
+        private bool TryClickAudioOptionCandidate(IWebElement candidate, out string error)
+        {
+            error = "";
+            WebDriverException? lastException = null;
+
+            if (driver is IJavaScriptExecutor js)
+            {
+                try
+                {
+                    js.ExecuteScript("arguments[0].scrollIntoView({block:'center', inline:'center'});", candidate);
+                }
+                catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
+                {
+                    lastException = ex;
+                }
+            }
+
+            try
+            {
+                new Actions(driver).MoveToElement(candidate).Click().Perform();
+                return true;
+            }
+            catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
+            {
+                lastException = ex;
+            }
+
+            try
+            {
+                candidate.Click();
+                return true;
+            }
+            catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
+            {
+                lastException = ex;
+            }
+
+            if (driver is IJavaScriptExecutor fallbackJs)
+            {
+                try
+                {
+                    fallbackJs.ExecuteScript("arguments[0].click();", candidate);
+                    return true;
+                }
+                catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
+                {
+                    lastException = ex;
+                }
+            }
+
+            error = SummarizeExceptionMessage(lastException) ?? "Selenium no pudo hacer click en el candidato Audio.";
+            return false;
+        }
+
+        private bool TryWaitForAudioOptionClickEffect(
+            string inputsBeforeClick,
+            IReadOnlySet<IntPtr> nativeDialogsBeforeClick,
+            string fileName,
+            out AudioOptionClickEffect effect,
+            out string diagnostic)
+        {
+            effect = AudioOptionClickEffect.None;
+            diagnostic = "";
+            DateTime startedAt = DateTime.UtcNow;
+            DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+            WebDriverException? lastNonFatalException = null;
+            string possibleDialogDiagnostic = "";
+
+            while (DateTime.UtcNow < deadline)
+            {
+                try
+                {
+                    if (FindAudioFileInput(driver) != null)
+                    {
+                        effect = AudioOptionClickEffect.AudioInput;
+                        diagnostic = $"aparecio input[type=file] compatible con audio; espera={FormatElapsedMilliseconds(startedAt)}";
+                        return true;
+                    }
+
+                    if (TryFindNativeFileDialogStrict(out _, out string dialogTitle))
+                    {
+                        effect = AudioOptionClickEffect.NativeDialog;
+                        diagnostic = $"aparecio dialogo nativo de archivo: {FormatDiagnosticValue(dialogTitle)}; espera={FormatElapsedMilliseconds(startedAt)}";
+                        return true;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(possibleDialogDiagnostic)
+                        && TryFindPossibleNativeFileDialog(out _, out _, out string currentPossibleDialogDiagnostic, nativeDialogsBeforeClick))
+                    {
+                        possibleDialogDiagnostic = currentPossibleDialogDiagnostic;
+                    }
+
+                    if (FindAttachmentPreview(driver, fileName) != null || FindAttachmentPreview(driver, "") != null)
+                    {
+                        effect = AudioOptionClickEffect.AttachmentPreview;
+                        diagnostic = $"aparecio preview de adjunto; espera={FormatElapsedMilliseconds(startedAt)}";
+                        return true;
+                    }
+
+                    string inputsAfterClick = GetFileInputsSignature(driver);
+                    if (!string.Equals(inputsBeforeClick, inputsAfterClick, StringComparison.Ordinal))
+                    {
+                        effect = AudioOptionClickEffect.FileInputsChanged;
+                        diagnostic = $"cambiaron los inputs file: {inputsBeforeClick} -> {inputsAfterClick}; espera={FormatElapsedMilliseconds(startedAt)}";
+                        return true;
+                    }
+                }
+                catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
+                {
+                    lastNonFatalException = ex;
+                }
+
+                Thread.Sleep(200);
+            }
+
+            if (!string.IsNullOrWhiteSpace(possibleDialogDiagnostic))
+            {
+                effect = AudioOptionClickEffect.PossibleNativeDialog;
+                diagnostic = $"aparecio dialogo nativo posible dentro de la ventana post-click; espera={FormatElapsedMilliseconds(startedAt)}; {possibleDialogDiagnostic}";
+                return true;
+            }
+
+            diagnostic = $"sin input audio, dialogo nativo estricto, dialogo posible, preview ni cambio de inputs file; timeout=5000ms; espera={FormatElapsedMilliseconds(startedAt)}; inputs actuales: {GetFileInputsOperationalSummary(driver)}; dialogo nativo: {GetNativeFileDialogDiagnostic(nativeDialogsBeforeClick)}";
+            if (lastNonFatalException != null)
+            {
+                diagnostic += $"; ultimo error no fatal: {SummarizeExceptionMessage(lastNonFatalException)}";
+            }
+
+            return false;
+        }
+
+        private bool TryReopenAttachmentMenu(WebDriverWait wait, out string error)
+        {
+            error = "";
+
+            try
+            {
+                IWebElement attachButton = wait.Until(ExpectedConditions.ElementToBeClickable(By.CssSelector(Selectors.AttachButtonCss)))
+                    ?? throw new WebDriverTimeoutException("No se encontro el boton de adjuntar para reabrir el menu.");
+                ClickElementSafely(attachButton);
+                Thread.Sleep(300);
+                return true;
+            }
+            catch (WebDriverException ex) when (!IsBrowserUnavailableException(ex))
+            {
+                error = SummarizeExceptionMessage(ex);
+                return false;
+            }
+        }
+
+        private static string GetFileInputsSignature(ISearchContext searchContext)
+        {
+            try
+            {
+                var accepts = searchContext
+                    .FindElements(By.CssSelector(Selectors.FileInputCss))
+                    .Select(input =>
+                    {
+                        try
+                        {
+                            return input.GetAttribute("accept") ?? "";
+                        }
+                        catch (StaleElementReferenceException)
+                        {
+                            return "(stale)";
+                        }
+                        catch (WebDriverException)
+                        {
+                            return "(no disponible)";
+                        }
+                    })
+                    .ToList();
+
+                return $"{accepts.Count}:{string.Join("|", accepts)}";
+            }
+            catch (WebDriverException ex)
+            {
+                return $"no disponible:{SummarizeExceptionMessage(ex)}";
+            }
+        }
+
+        private static string BuildAudioOptionClickAttemptsDiagnostics(
+            IReadOnlyList<string> attempts,
+            IReadOnlyList<int> candidateBatchCounts)
+        {
+            string candidateCountSummary = candidateBatchCounts.Count == 0
+                ? "candidatos encontrados por pasada: (sin busqueda)"
+                : $"candidatos encontrados por pasada: {string.Join(", ", candidateBatchCounts)}";
+
+            if (attempts.Count == 0)
+            {
+                return $"{candidateCountSummary}; candidatos Audio intentados: 0";
+            }
+
+            return $"{candidateCountSummary}; candidatos Audio intentados: {attempts.Count}; {string.Join(" | ", attempts.Take(8))}" +
+                (attempts.Count > 8 ? $" | +{attempts.Count - 8} intentos mas" : "");
+        }
+
+        private static string FormatAudioOptionClickEffect(AudioOptionClickEffect effect)
+        {
+            return effect switch
+            {
+                AudioOptionClickEffect.AudioInput => "input audio",
+                AudioOptionClickEffect.NativeDialog => "dialogo nativo",
+                AudioOptionClickEffect.PossibleNativeDialog => "dialogo nativo posible",
+                AudioOptionClickEffect.AttachmentPreview => "preview",
+                AudioOptionClickEffect.FileInputsChanged => "cambio de inputs file",
+                _ => "ninguno"
+            };
+        }
+
+        private static string FormatElapsedMilliseconds(DateTime startedAt)
+        {
+            double elapsed = Math.Max(0, (DateTime.UtcNow - startedAt).TotalMilliseconds);
+            return $"{elapsed:0}ms";
         }
 
         private static IWebElement? FindAudioFileInput(ISearchContext searchContext)
@@ -1322,14 +2091,16 @@ namespace Automate_Whatsapp.Logic
             }
         }
 
-        private bool TryUploadFileThroughNativeDialog(string fullAudioPath, out string error)
+        private NativeDialogUploadResult TryUploadFileThroughNativeDialog(string fullAudioPath)
         {
-            error = "";
-
-            if (!TryFindNativeFileDialog(out IntPtr dialogHandle, out string dialogTitle))
+            if (!TryFindNativeFileDialogStrict(out IntPtr dialogHandle, out string dialogTitle))
             {
-                error = "No se detecto el dialogo nativo de archivo esperado.";
-                return false;
+                return new NativeDialogUploadResult
+                {
+                    Success = false,
+                    Status = NativeDialogUploadStatus.Error,
+                    Diagnostic = "No se detecto el dialogo nativo de archivo esperado."
+                };
             }
 
             try
@@ -1339,22 +2110,39 @@ namespace Automate_Whatsapp.Logic
 
                 if (!TryPasteFilePathAndSubmit(fullAudioPath, out string pasteError))
                 {
-                    error = pasteError;
-                    return false;
+                    return new NativeDialogUploadResult
+                    {
+                        Success = false,
+                        Status = NativeDialogUploadStatus.Error,
+                        Diagnostic = pasteError
+                    };
                 }
 
                 if (!WaitForNativeFileDialogToClose(dialogHandle, TimeSpan.FromSeconds(8)))
                 {
-                    error = $"El dialogo nativo de archivo no se cerro despues de pegar la ruta y presionar Enter. Titulo: {FormatDiagnosticValue(dialogTitle)}.";
-                    return false;
+                    return new NativeDialogUploadResult
+                    {
+                        Success = true,
+                        Status = NativeDialogUploadStatus.DialogStillOpen,
+                        Diagnostic = $"Dialogo nativo usado para cargar audio; se pego la ruta y se presiono Enter, pero el dialogo sigue abierto. Titulo: {FormatDiagnosticValue(dialogTitle)}."
+                    };
                 }
 
-                return true;
+                return new NativeDialogUploadResult
+                {
+                    Success = true,
+                    Status = NativeDialogUploadStatus.DialogClosed,
+                    Diagnostic = $"Dialogo nativo usado para cargar audio; se pego la ruta, se presiono Enter y el dialogo se cerro solo. Titulo: {FormatDiagnosticValue(dialogTitle)}."
+                };
             }
             catch (Exception ex) when (ex is InvalidOperationException or ExternalException or ThreadStateException)
             {
-                error = $"No se pudo cargar el archivo en el dialogo nativo. Error: {SummarizeExceptionMessage(ex)}";
-                return false;
+                return new NativeDialogUploadResult
+                {
+                    Success = false,
+                    Status = NativeDialogUploadStatus.Error,
+                    Diagnostic = $"No se pudo cargar el archivo en el dialogo nativo. Error: {SummarizeExceptionMessage(ex)}"
+                };
             }
         }
 
@@ -1398,6 +2186,76 @@ namespace Automate_Whatsapp.Logic
                 unrecoveredMessage,
                 true,
                 exception);
+        }
+
+        private WhatsAppSendResult PossibleNativeDialogFailure(WebDriverWait wait, string diagnostic, Exception? exception = null)
+        {
+            string message = BuildAudioStageFailureMessage(
+                AudioAttachStage.NativeDialogUpload,
+                "Se detecto un dialogo nativo posible despues del click en Audio, " +
+                "pero no se pudo validarlo como selector de archivo de Chrome. No se pegara la ruta del audio. " +
+                diagnostic);
+
+            bool dismissed = TryDismissPossibleNativeFileDialog(out string dismissDiagnostic);
+            if (!string.IsNullOrWhiteSpace(dismissDiagnostic))
+            {
+                log(dismissDiagnostic);
+            }
+
+            if (dismissed && WaitForWhatsAppInteractable(wait))
+            {
+                return AudioUiFailure(message, exception);
+            }
+
+            var issue = GetHealthIssue();
+            if (issue.IsReady)
+            {
+                return AudioUiFailure(message, exception);
+            }
+
+            string notReadyMessage = BuildAudioStageFailureMessage(
+                AudioAttachStage.NativeDialogUpload,
+                "Se detecto un dialogo nativo posible no validado y WhatsApp no quedo interactuable despues del intento de recuperacion. " +
+                $"{diagnostic}. Estado: {issue.Status}. {issue.Message}");
+            log(notReadyMessage);
+            return WhatsAppSendResult.Failure(issue.Status, notReadyMessage, issue.IsGlobalFailure, exception ?? issue.Exception);
+        }
+
+        private static bool TryDismissPossibleNativeFileDialog(out string diagnostic)
+        {
+            diagnostic = "";
+
+            if (!TryFindPossibleNativeFileDialog(out IntPtr dialogHandle, out _, out string possibleDiagnostic))
+            {
+                diagnostic = "No se detectó diálogo nativo posible pendiente para cerrar.";
+                return true;
+            }
+
+            NativeDialogWindowInfo? candidate = GetNativeFileDialogCandidates()
+                .FirstOrDefault(window => window.Handle == dialogHandle);
+            if (candidate == null || !CanSafelyDismissPossibleNativeDialog(candidate))
+            {
+                diagnostic = "No se cerró el diálogo nativo posible porque no está validado como selector de archivo de Chrome. " + possibleDiagnostic;
+                return false;
+            }
+
+            SetForegroundWindow(dialogHandle);
+            PostEscapeToWindow(dialogHandle);
+            Thread.Sleep(1000);
+
+            if (!TryFindPossibleNativeFileDialog(out _, out _, out _))
+            {
+                diagnostic = "Diálogo nativo posible cerrado con Escape.";
+                return true;
+            }
+
+            diagnostic = "No se pudo cerrar con Escape el diálogo nativo posible. " + possibleDiagnostic;
+            return false;
+        }
+
+        private static bool CanSafelyDismissPossibleNativeDialog(NativeDialogWindowInfo candidate)
+        {
+            return candidate.IsBrowserProcess && (candidate.HasPossibleTitle || candidate.HasStrictTitle);
         }
 
         private static bool TryPasteFilePathAndSubmit(string fullAudioPath, out string error)
@@ -1484,13 +2342,72 @@ namespace Automate_Whatsapp.Logic
             PostMessage(windowHandle, WmKeyUp, new IntPtr(VkEscape), IntPtr.Zero);
         }
 
-        private static bool TryFindNativeFileDialog(out IntPtr dialogHandle, out string title)
+        private static bool TryWaitForStrictNativeFileDialog(TimeSpan timeout, out IntPtr dialogHandle, out string title)
         {
+            DateTime deadline = DateTime.UtcNow.Add(timeout);
+            do
+            {
+                if (TryFindNativeFileDialogStrict(out dialogHandle, out title))
+                {
+                    return true;
+                }
+
+                Thread.Sleep(100);
+            }
+            while (DateTime.UtcNow < deadline);
+
             dialogHandle = IntPtr.Zero;
             title = "";
+            return false;
+        }
 
-            IntPtr foundHandle = IntPtr.Zero;
-            string foundTitle = "";
+        private static bool TryFindNativeFileDialog(out IntPtr dialogHandle, out string title)
+        {
+            return TryFindNativeFileDialogStrict(out dialogHandle, out title);
+        }
+
+        private static bool TryFindNativeFileDialogStrict(out IntPtr dialogHandle, out string title)
+        {
+            var candidate = GetNativeFileDialogCandidates()
+                .FirstOrDefault(window => window.HasStrictTitle && window.IsBrowserProcess);
+
+            dialogHandle = candidate?.Handle ?? IntPtr.Zero;
+            title = candidate?.Title ?? "";
+            return dialogHandle != IntPtr.Zero;
+        }
+
+        private static bool TryFindPossibleNativeFileDialog(
+            out IntPtr dialogHandle,
+            out string title,
+            out string diagnostic,
+            IReadOnlySet<IntPtr>? handlesBeforeReference = null)
+        {
+            var allCandidates = GetNativeFileDialogCandidates(handlesBeforeReference);
+            var candidates = allCandidates
+                .Where(window => window.HasPossibleTitle || window.AppearedAfterReference)
+                .OrderByDescending(window => window.IsBrowserProcess)
+                .ThenByDescending(window => window.HasStrictTitle)
+                .ThenByDescending(window => window.HasPossibleTitle)
+                .ThenByDescending(window => window.AppearedAfterReference)
+                .ToList();
+
+            NativeDialogWindowInfo? candidate = candidates.FirstOrDefault();
+            dialogHandle = candidate?.Handle ?? IntPtr.Zero;
+            title = candidate?.Title ?? "";
+            diagnostic = BuildNativeFileDialogDiagnostic(allCandidates, handlesBeforeReference);
+            return dialogHandle != IntPtr.Zero;
+        }
+
+        private static IReadOnlySet<IntPtr> GetVisibleNativeDialogHandles()
+        {
+            return GetNativeFileDialogCandidates()
+                .Select(candidate => candidate.Handle)
+                .ToHashSet();
+        }
+
+        private static IReadOnlyList<NativeDialogWindowInfo> GetNativeFileDialogCandidates(IReadOnlySet<IntPtr>? handlesBeforeReference = null)
+        {
+            var candidates = new List<NativeDialogWindowInfo>();
 
             EnumWindows((hWnd, _) =>
             {
@@ -1506,61 +2423,105 @@ namespace Automate_Whatsapp.Logic
                 }
 
                 string windowTitle = GetNativeWindowText(hWnd);
-                if (!IsNativeFileDialogTitle(windowTitle))
-                {
-                    return true;
-                }
+                uint processId = GetNativeWindowProcessId(hWnd);
+                string processName = GetNativeWindowProcessName(processId);
+                bool isBrowserProcess = IsBrowserNativeDialogProcess(processName);
 
-                if (!IsLikelyBrowserNativeDialog(hWnd))
+                candidates.Add(new NativeDialogWindowInfo
                 {
-                    return true;
-                }
+                    Handle = hWnd,
+                    Title = windowTitle,
+                    ClassName = className,
+                    ProcessId = processId,
+                    ProcessName = processName,
+                    IsBrowserProcess = isBrowserProcess,
+                    HasStrictTitle = IsStrictNativeFileDialogTitle(windowTitle),
+                    HasPossibleTitle = IsPossibleNativeFileDialogTitle(windowTitle),
+                    AppearedAfterReference = handlesBeforeReference != null && !handlesBeforeReference.Contains(hWnd)
+                });
 
-                foundHandle = hWnd;
-                foundTitle = windowTitle;
-                return false;
+                return true;
             }, IntPtr.Zero);
 
-            dialogHandle = foundHandle;
-            title = foundTitle;
-            return dialogHandle != IntPtr.Zero;
+            return candidates;
         }
 
-        private static string GetNativeFileDialogDiagnostic()
+        private static string GetNativeFileDialogDiagnostic(IReadOnlySet<IntPtr>? handlesBeforeReference = null)
         {
-            return TryFindNativeFileDialog(out _, out string title)
-                ? $"si, titulo={FormatDiagnosticValue(title)}"
-                : "no";
+            var candidates = GetNativeFileDialogCandidates(handlesBeforeReference);
+            return BuildNativeFileDialogDiagnostic(candidates, handlesBeforeReference);
+        }
+
+        private static string BuildNativeFileDialogDiagnostic(
+            IReadOnlyList<NativeDialogWindowInfo> candidates,
+            IReadOnlySet<IntPtr>? handlesBeforeReference)
+        {
+            string foreground = GetForegroundWindowDiagnostic();
+            if (candidates.Count == 0)
+            {
+                return $"estricto=no; posible=no; candidatos #32770: 0; foreground: {foreground}";
+            }
+
+            bool strict = candidates.Any(candidate => candidate.HasStrictTitle && candidate.IsBrowserProcess);
+            bool possible = candidates.Any(candidate => candidate.HasPossibleTitle || candidate.AppearedAfterReference);
+            var details = candidates
+                .Take(5)
+                .Select(candidate => FormatNativeDialogCandidateDiagnostic(candidate))
+                .ToList();
+
+            if (candidates.Count > details.Count)
+            {
+                details.Add($"+{candidates.Count - details.Count} candidatos mas");
+            }
+
+            string reference = handlesBeforeReference == null
+                ? "sin referencia post-click"
+                : $"referencia post-click={handlesBeforeReference.Count} handles";
+
+            return $"estricto={FormatDiagnosticFlag(strict)}; posible={FormatDiagnosticFlag(possible)}; {reference}; candidatos #32770: {candidates.Count}; {string.Join(" | ", details)}; foreground: {foreground}";
+        }
+
+        private static string FormatNativeDialogCandidateDiagnostic(NativeDialogWindowInfo candidate)
+        {
+            return
+                $"handle={FormatWindowHandle(candidate.Handle)}, " +
+                $"titulo={FormatDiagnosticValue(candidate.Title)}, " +
+                $"clase={FormatDiagnosticValue(candidate.ClassName)}, " +
+                $"pid={candidate.ProcessId}, " +
+                $"proceso={FormatDiagnosticValue(candidate.ProcessName)}, " +
+                $"browser={FormatDiagnosticFlag(candidate.IsBrowserProcess)}, " +
+                $"tituloEstricto={FormatDiagnosticFlag(candidate.HasStrictTitle)}, " +
+                $"tituloPosible={FormatDiagnosticFlag(candidate.HasPossibleTitle)}, " +
+                $"aparecioPostClick={FormatDiagnosticFlag(candidate.AppearedAfterReference)}";
         }
 
         private static bool IsLikelyBrowserNativeDialog(IntPtr windowHandle)
         {
-            try
-            {
-                _ = GetWindowThreadProcessId(windowHandle, out uint processId);
-                if (processId == 0)
-                {
-                    return false;
-                }
-
-                using Process process = Process.GetProcessById((int)processId);
-                string processName = process.ProcessName ?? "";
-                return processName.Contains("chrome", StringComparison.OrdinalIgnoreCase)
-                    || processName.Contains("chromedriver", StringComparison.OrdinalIgnoreCase);
-            }
-            catch
-            {
-                return false;
-            }
+            uint processId = GetNativeWindowProcessId(windowHandle);
+            string processName = GetNativeWindowProcessName(processId);
+            return IsBrowserNativeDialogProcess(processName);
         }
 
-        private static bool IsNativeFileDialogTitle(string title)
+        private static bool IsBrowserNativeDialogProcess(string processName)
+        {
+            return !string.IsNullOrWhiteSpace(processName)
+                && ContainsAny(processName, BrowserNativeDialogProcessMarkers);
+        }
+
+        private static bool IsStrictNativeFileDialogTitle(string title)
         {
             string normalized = (title ?? "").Trim();
             return normalized.Equals("Abrir", StringComparison.OrdinalIgnoreCase)
                 || normalized.Equals("Open", StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("Abrir", StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("Open", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsPossibleNativeFileDialogTitle(string title)
+        {
+            string normalized = (title ?? "").Trim();
+            return !string.IsNullOrWhiteSpace(normalized)
+                && ContainsAny(normalized, PossibleNativeFileDialogTitleMarkers);
         }
 
         private static string GetNativeWindowText(IntPtr windowHandle)
@@ -1575,6 +2536,62 @@ namespace Automate_Whatsapp.Logic
             var className = new StringBuilder(NativeWindowTextMaxLength);
             _ = GetClassName(windowHandle, className, className.Capacity);
             return className.ToString();
+        }
+
+        private static uint GetNativeWindowProcessId(IntPtr windowHandle)
+        {
+            try
+            {
+                _ = GetWindowThreadProcessId(windowHandle, out uint processId);
+                return processId;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private static string GetNativeWindowProcessName(uint processId)
+        {
+            if (processId == 0)
+            {
+                return "";
+            }
+
+            try
+            {
+                using Process process = Process.GetProcessById((int)processId);
+                return process.ProcessName ?? "";
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        private static string GetForegroundWindowDiagnostic()
+        {
+            IntPtr foregroundHandle = GetForegroundWindow();
+            if (foregroundHandle == IntPtr.Zero)
+            {
+                return "handle=(ninguno)";
+            }
+
+            uint processId = GetNativeWindowProcessId(foregroundHandle);
+            string processName = GetNativeWindowProcessName(processId);
+            return
+                $"handle={FormatWindowHandle(foregroundHandle)}, " +
+                $"titulo={FormatDiagnosticValue(GetNativeWindowText(foregroundHandle))}, " +
+                $"clase={FormatDiagnosticValue(GetNativeWindowClassName(foregroundHandle))}, " +
+                $"pid={processId}, " +
+                $"proceso={FormatDiagnosticValue(processName)}";
+        }
+
+        private static string FormatWindowHandle(IntPtr handle)
+        {
+            return handle == IntPtr.Zero
+                ? "0x0"
+                : $"0x{handle.ToInt64():X}";
         }
 
         private static bool IsPotentialNativeFileDialogBlock(Exception? exception)
@@ -1869,7 +2886,7 @@ namespace Automate_Whatsapp.Logic
             {
                 return searchContext.FindElements(By.CssSelector(Selectors.AttachmentMenuIndicatorCss)).Count > 0
                     || FindAudioFileInput(searchContext) != null
-                    || FindAudioOption(searchContext) != null;
+                    || FindAudioOptionCandidates(searchContext).Count > 0;
             }
             catch (WebDriverException)
             {
