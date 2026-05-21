@@ -40,7 +40,7 @@ namespace Automate_Whatsapp.Logic
             "File Upload",
             "Cargar"
         };
-        private static readonly string[] BrowserNativeDialogProcessMarkers =
+        private static readonly string[] BrowserNativeDialogProcesses =
         {
             "chrome",
             "chromedriver",
@@ -180,13 +180,14 @@ namespace Automate_Whatsapp.Logic
             public string Diagnostic { get; init; } = "";
         }
 
-        private sealed class NativeDialogWindowInfo
+        internal sealed class NativeDialogWindowInfo
         {
             public IntPtr Handle { get; init; }
             public string Title { get; init; } = "";
             public string ClassName { get; init; } = "";
             public uint ProcessId { get; init; }
             public string ProcessName { get; init; } = "";
+            public string NormalizedProcessName { get; init; } = "";
             public bool IsBrowserProcess { get; init; }
             public bool HasStrictTitle { get; init; }
             public bool HasPossibleTitle { get; init; }
@@ -3171,9 +3172,8 @@ namespace Automate_Whatsapp.Logic
         {
             var allCandidates = GetNativeFileDialogCandidates(handlesBeforeReference);
             var candidates = allCandidates
-                .Where(window => window.HasPossibleTitle || window.AppearedAfterReference)
-                .OrderByDescending(window => window.IsBrowserProcess)
-                .ThenByDescending(window => window.HasStrictTitle)
+                .Where(window => window.IsBrowserProcess && (window.HasPossibleTitle || window.AppearedAfterReference))
+                .OrderByDescending(window => window.HasStrictTitle)
                 .ThenByDescending(window => window.HasPossibleTitle)
                 .ThenByDescending(window => window.AppearedAfterReference)
                 .ToList();
@@ -3230,6 +3230,7 @@ namespace Automate_Whatsapp.Logic
                 string windowTitle = GetNativeWindowText(hWnd);
                 uint processId = GetNativeWindowProcessId(hWnd);
                 string processName = GetNativeWindowProcessName(processId);
+                string normalizedProcessName = NormalizeNativeDialogProcessName(processName);
                 bool isBrowserProcess = IsBrowserNativeDialogProcess(processName);
 
                 candidates.Add(new NativeDialogWindowInfo
@@ -3239,6 +3240,7 @@ namespace Automate_Whatsapp.Logic
                     ClassName = className,
                     ProcessId = processId,
                     ProcessName = processName,
+                    NormalizedProcessName = normalizedProcessName,
                     IsBrowserProcess = isBrowserProcess,
                     HasStrictTitle = IsStrictNativeFileDialogTitle(windowTitle),
                     HasPossibleTitle = IsPossibleNativeFileDialogTitle(windowTitle),
@@ -3257,33 +3259,62 @@ namespace Automate_Whatsapp.Logic
             return BuildNativeFileDialogDiagnostic(candidates, handlesBeforeReference);
         }
 
-        private static string BuildNativeFileDialogDiagnostic(
+        internal static string BuildNativeFileDialogDiagnostic(
             IReadOnlyList<NativeDialogWindowInfo> candidates,
             IReadOnlySet<IntPtr>? handlesBeforeReference)
         {
             string foreground = GetForegroundWindowDiagnostic();
             if (candidates.Count == 0)
             {
-                return $"estricto=no; posible=no; candidatos #32770: 0; foreground: {foreground}";
+                return $"estricto=no; posible=no; dialogos navegador considerados: 0; dialogos externos ignorados: 0; foreground: {foreground}";
             }
 
-            bool strict = candidates.Any(candidate => candidate.HasStrictTitle && candidate.IsBrowserProcess);
-            bool possible = candidates.Any(candidate => candidate.HasPossibleTitle || candidate.AppearedAfterReference);
-            var details = candidates
+            var browserCandidates = candidates
+                .Where(candidate => candidate.IsBrowserProcess)
+                .ToList();
+            var externalCandidates = candidates
+                .Where(candidate => !candidate.IsBrowserProcess)
+                .ToList();
+
+            bool strict = browserCandidates.Any(candidate => candidate.HasStrictTitle);
+            bool possible = browserCandidates.Any(candidate => candidate.HasPossibleTitle || candidate.AppearedAfterReference);
+            var browserDetails = browserCandidates
+                .Take(5)
+                .Select(candidate => FormatNativeDialogCandidateDiagnostic(candidate))
+                .ToList();
+            var externalDetails = externalCandidates
                 .Take(5)
                 .Select(candidate => FormatNativeDialogCandidateDiagnostic(candidate))
                 .ToList();
 
-            if (candidates.Count > details.Count)
+            if (browserCandidates.Count > browserDetails.Count)
             {
-                details.Add($"+{candidates.Count - details.Count} candidatos mas");
+                browserDetails.Add($"+{browserCandidates.Count - browserDetails.Count} candidatos mas");
+            }
+
+            if (externalCandidates.Count > externalDetails.Count)
+            {
+                externalDetails.Add($"+{externalCandidates.Count - externalDetails.Count} candidatos mas");
             }
 
             string reference = handlesBeforeReference == null
                 ? "sin referencia post-click"
                 : $"referencia post-click={handlesBeforeReference.Count} handles";
 
-            return $"estricto={FormatDiagnosticFlag(strict)}; posible={FormatDiagnosticFlag(possible)}; {reference}; candidatos #32770: {candidates.Count}; {string.Join(" | ", details)}; foreground: {foreground}";
+            string browserSummary = browserCandidates.Count == 0
+                ? "(ninguno)"
+                : string.Join(" | ", browserDetails);
+            string externalSummary = externalCandidates.Count == 0
+                ? "(ninguno)"
+                : string.Join(" | ", externalDetails);
+
+            return
+                $"estricto={FormatDiagnosticFlag(strict)}; " +
+                $"posible={FormatDiagnosticFlag(possible)}; " +
+                $"{reference}; " +
+                $"dialogos navegador considerados: {browserCandidates.Count}; {browserSummary}; " +
+                $"dialogos externos ignorados: {externalCandidates.Count}; {externalSummary}; " +
+                $"foreground: {foreground}";
         }
 
         private static string FormatNativeDialogCandidateDiagnostic(NativeDialogWindowInfo candidate)
@@ -3294,6 +3325,7 @@ namespace Automate_Whatsapp.Logic
                 $"clase={FormatDiagnosticValue(candidate.ClassName)}, " +
                 $"pid={candidate.ProcessId}, " +
                 $"proceso={FormatDiagnosticValue(candidate.ProcessName)}, " +
+                $"procesoNormalizado={FormatDiagnosticValue(candidate.NormalizedProcessName)}, " +
                 $"browser={FormatDiagnosticFlag(candidate.IsBrowserProcess)}, " +
                 $"tituloEstricto={FormatDiagnosticFlag(candidate.HasStrictTitle)}, " +
                 $"tituloPosible={FormatDiagnosticFlag(candidate.HasPossibleTitle)}, " +
@@ -3307,10 +3339,21 @@ namespace Automate_Whatsapp.Logic
             return IsBrowserNativeDialogProcess(processName);
         }
 
-        private static bool IsBrowserNativeDialogProcess(string processName)
+        internal static bool IsBrowserNativeDialogProcess(string processName)
         {
-            return !string.IsNullOrWhiteSpace(processName)
-                && ContainsAny(processName, BrowserNativeDialogProcessMarkers);
+            string normalized = NormalizeNativeDialogProcessName(processName);
+            return BrowserNativeDialogProcesses.Contains(normalized, StringComparer.OrdinalIgnoreCase);
+        }
+
+        internal static string NormalizeNativeDialogProcessName(string processName)
+        {
+            string normalized = (processName ?? "").Trim();
+            if (normalized.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[..^4];
+            }
+
+            return normalized.ToLowerInvariant();
         }
 
         private static bool IsStrictNativeFileDialogTitle(string title)
@@ -3384,12 +3427,46 @@ namespace Automate_Whatsapp.Logic
 
             uint processId = GetNativeWindowProcessId(foregroundHandle);
             string processName = GetNativeWindowProcessName(processId);
+            string className = GetNativeWindowClassName(foregroundHandle);
+            string title = GetNativeWindowText(foregroundHandle);
+            string classification = ClassifyForegroundWindow(title, className, processName);
             return
                 $"handle={FormatWindowHandle(foregroundHandle)}, " +
-                $"titulo={FormatDiagnosticValue(GetNativeWindowText(foregroundHandle))}, " +
-                $"clase={FormatDiagnosticValue(GetNativeWindowClassName(foregroundHandle))}, " +
+                $"titulo={FormatDiagnosticValue(title)}, " +
+                $"clase={FormatDiagnosticValue(className)}, " +
                 $"pid={processId}, " +
-                $"proceso={FormatDiagnosticValue(processName)}";
+                $"proceso={FormatDiagnosticValue(processName)}, " +
+                $"clasificacion={FormatDiagnosticValue(classification)}";
+        }
+
+        internal static string ClassifyForegroundWindow(string title, string className, string processName)
+        {
+            bool isDialogClass = string.Equals(className, "#32770", StringComparison.OrdinalIgnoreCase);
+            bool isBrowserProcess = IsBrowserNativeDialogProcess(processName);
+            bool hasStrictTitle = IsStrictNativeFileDialogTitle(title);
+            bool hasPossibleTitle = IsPossibleNativeFileDialogTitle(title);
+
+            if (isDialogClass && isBrowserProcess && hasStrictTitle)
+            {
+                return "selector de archivo de navegador";
+            }
+
+            if (isDialogClass && isBrowserProcess && hasPossibleTitle)
+            {
+                return "dialogo posible de selector de archivo de navegador";
+            }
+
+            if (isDialogClass && !isBrowserProcess)
+            {
+                return "dialogo externo ignorado";
+            }
+
+            if (isBrowserProcess)
+            {
+                return "popup de navegador no selector de archivo";
+            }
+
+            return "ventana externa";
         }
 
         private static string FormatWindowHandle(IntPtr handle)
