@@ -132,6 +132,30 @@ namespace Automate_Whatsapp.Logic
             public string Reason { get; init; } = "";
         }
 
+        internal sealed class AudioOptionCandidateDiagnosticItem
+        {
+            public string Origin { get; init; } = "";
+            public AudioOptionCandidateSnapshot Snapshot { get; init; } = new();
+            public AudioOptionCandidateEvaluation Evaluation { get; init; } = new();
+        }
+
+        internal sealed class FileInputDiagnosticItem
+        {
+            public string Accept { get; init; } = "";
+            public bool IsAudio { get; init; }
+            public bool? IsDisplayed { get; init; }
+            public bool? IsEnabled { get; init; }
+            public string Name { get; init; } = "";
+            public string AriaLabel { get; init; } = "";
+            public string Error { get; init; } = "";
+        }
+
+        private sealed class AudioOptionCandidateSearchResult
+        {
+            public List<AudioOptionCandidateInfo> AcceptedCandidates { get; } = new();
+            public List<AudioOptionCandidateInfo> RejectedCandidates { get; } = new();
+        }
+
         private sealed class AudioOutgoingBaseline
         {
             public bool IsAvailable { get; init; }
@@ -621,6 +645,7 @@ namespace Automate_Whatsapp.Logic
                 }
 
                 LogAudioStage(AudioAttachStage.FindInputBeforeClick, "buscando input de audio antes del click y opcion Audio visible");
+                LogAudioStage(AudioAttachStage.FindInputBeforeClick, BuildAttachmentMenuAudioDiagnostics(driver));
                 try
                 {
                     wait.Until(d =>
@@ -1197,9 +1222,11 @@ namespace Automate_Whatsapp.Logic
 
         private IWebElement? FindBestClickableAudioOption(ISearchContext searchContext, out string diagnostics)
         {
-            var candidates = FindAudioOptionCandidateInfos(searchContext);
-            diagnostics = BuildAudioOptionCandidatesDiagnostics(candidates);
-            return candidates.Count == 0 ? null : candidates[0].Element;
+            AudioOptionCandidateSearchResult searchResult = FindAudioOptionCandidateSearchResult(searchContext);
+            diagnostics = BuildAttachmentMenuAudioDiagnostics(searchContext, searchResult);
+            return searchResult.AcceptedCandidates.Count == 0
+                ? null
+                : searchResult.AcceptedCandidates[0].Element;
         }
 
         private static IReadOnlyList<IWebElement> FindAudioOptionCandidates(ISearchContext searchContext)
@@ -1211,17 +1238,22 @@ namespace Automate_Whatsapp.Logic
 
         private static IReadOnlyList<AudioOptionCandidateInfo> FindAudioOptionCandidateInfos(ISearchContext searchContext)
         {
-            var candidates = new List<AudioOptionCandidateInfo>();
+            return FindAudioOptionCandidateSearchResult(searchContext).AcceptedCandidates;
+        }
+
+        private static AudioOptionCandidateSearchResult FindAudioOptionCandidateSearchResult(ISearchContext searchContext)
+        {
+            var result = new AudioOptionCandidateSearchResult();
             foreach (var candidateLocator in Selectors.AudioOptionCandidateLocators)
             {
-                AddAudioOptionCandidates(candidates, searchContext, candidateLocator.Locator, candidateLocator.Origin);
+                AddAudioOptionCandidates(result, searchContext, candidateLocator.Locator, candidateLocator.Origin);
             }
 
-            return candidates;
+            return result;
         }
 
         private static void AddAudioOptionCandidates(
-            List<AudioOptionCandidateInfo> candidates,
+            AudioOptionCandidateSearchResult result,
             ISearchContext searchContext,
             By locator,
             string origin)
@@ -1237,9 +1269,23 @@ namespace Automate_Whatsapp.Logic
                     }
 
                     AudioOptionCandidateEvaluation evaluation = EvaluateAudioOptionCandidate(snapshot);
-                    if (evaluation.Accepted && !ContainsEquivalentElement(candidates, candidate))
+                    if (evaluation.Accepted)
                     {
-                        candidates.Add(new AudioOptionCandidateInfo
+                        if (!ContainsEquivalentElement(result.AcceptedCandidates, candidate))
+                        {
+                            result.AcceptedCandidates.Add(new AudioOptionCandidateInfo
+                            {
+                                Element = candidate,
+                                Origin = origin,
+                                Snapshot = snapshot,
+                                Evaluation = evaluation
+                            });
+                        }
+                    }
+                    else if (!ContainsEquivalentElement(result.AcceptedCandidates, candidate)
+                        && !ContainsEquivalentElement(result.RejectedCandidates, candidate))
+                    {
+                        result.RejectedCandidates.Add(new AudioOptionCandidateInfo
                         {
                             Element = candidate,
                             Origin = origin,
@@ -1541,6 +1587,11 @@ namespace Automate_Whatsapp.Logic
 
         private string BuildAudioOptionCandidatesDiagnostics(IReadOnlyList<AudioOptionCandidateInfo> candidates)
         {
+            return BuildAudioOptionCandidatesDiagnostics(candidates.Select(ToAudioOptionDiagnosticItem).ToList());
+        }
+
+        internal static string BuildAudioOptionCandidatesDiagnostics(IReadOnlyList<AudioOptionCandidateDiagnosticItem> candidates)
+        {
             if (candidates.Count == 0)
             {
                 return "candidatos Audio dentro del menu de adjuntos: 0";
@@ -1548,7 +1599,7 @@ namespace Automate_Whatsapp.Logic
 
             var details = candidates
                 .Take(6)
-                .Select((candidate, index) => $"#{index + 1}: {GetAudioOptionCandidateDiagnostics(candidate)}")
+                .Select((candidate, index) => $"#{index + 1}: {FormatAudioOptionCandidateDiagnostic(candidate)}")
                 .ToList();
 
             if (candidates.Count > details.Count)
@@ -1559,58 +1610,90 @@ namespace Automate_Whatsapp.Logic
             return $"candidatos Audio dentro del menu de adjuntos: {candidates.Count}; {string.Join(" | ", details)}";
         }
 
-        private string GetAudioOptionCandidateDiagnostics(AudioOptionCandidateInfo candidate)
+        internal static string BuildRejectedAudioOptionCandidatesDiagnostics(IReadOnlyList<AudioOptionCandidateDiagnosticItem> candidates)
         {
-            return GetAudioOptionCandidateDiagnostics(candidate.Element, candidate.Origin);
+            if (candidates.Count == 0)
+            {
+                return "candidatos Audio rechazados: 0";
+            }
+
+            var details = candidates
+                .Take(5)
+                .Select((candidate, index) => $"#{index + 1}: {FormatRejectedAudioOptionCandidateDiagnostic(candidate)}")
+                .ToList();
+
+            if (candidates.Count > details.Count)
+            {
+                details.Add($"+{candidates.Count - details.Count} candidatos mas");
+            }
+
+            return $"candidatos Audio rechazados: {candidates.Count}; {string.Join(" | ", details)}";
         }
 
-        private string GetAudioOptionCandidateDiagnostics(IWebElement candidate, string origin)
+        internal static string BuildAttachmentMenuAudioDiagnostics(
+            bool menuContainerFound,
+            IReadOnlyList<FileInputDiagnosticItem> fileInputs,
+            IReadOnlyList<AudioOptionCandidateDiagnosticItem> acceptedCandidates,
+            IReadOnlyList<AudioOptionCandidateDiagnosticItem> rejectedCandidates)
         {
-            try
-            {
-                if (driver is IJavaScriptExecutor js)
-                {
-                    object? result = js.ExecuteScript(
-                        "const e = arguments[0];" +
-                        "const r = e.getBoundingClientRect();" +
-                        "const s = window.getComputedStyle(e);" +
-                        "const text = (e.innerText || e.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 80);" +
-                        "const hasIcon = Array.from(e.querySelectorAll('title')).some(t => (t.textContent || '').trim() === 'ic-headphones-filled');" +
-                        "const inMenu = !!e.closest('[role=\"menu\"]');" +
-                        "return 'tag=' + e.tagName.toLowerCase()" +
-                        " + '; role=' + (e.getAttribute('role') || '(none)')" +
-                        " + '; tabindex=' + (e.getAttribute('tabindex') || '(none)')" +
-                        " + '; aria-label=' + (e.getAttribute('aria-label') || '(none)')" +
-                        " + '; texto=' + (text || '(vacio)')" +
-                        " + '; size=' + Math.round(r.width) + 'x' + Math.round(r.height)" +
-                        " + '; pointer-events=' + s.pointerEvents" +
-                        " + '; cursor=' + s.cursor" +
-                        " + '; icono=' + (hasIcon ? 'si' : 'no')" +
-                        " + '; en-menu=' + (inMenu ? 'si' : 'no');",
-                        candidate);
+            return
+                $"contenedor menu/dropdown detectado: {FormatDiagnosticFlag(menuContainerFound)}; " +
+                $"{BuildFileInputsDiagnosticSummary(fileInputs)}; " +
+                $"{BuildAudioOptionCandidatesDiagnostics(acceptedCandidates)}; " +
+                $"{BuildRejectedAudioOptionCandidatesDiagnostics(rejectedCandidates)}";
+        }
 
-                    if (result is string jsDiagnostic && !string.IsNullOrWhiteSpace(jsDiagnostic))
-                    {
-                        return $"origen={FormatDiagnosticValue(origin)}; {jsDiagnostic}";
-                    }
-                }
+        private static AudioOptionCandidateDiagnosticItem ToAudioOptionDiagnosticItem(AudioOptionCandidateInfo candidate)
+        {
+            return new AudioOptionCandidateDiagnosticItem
+            {
+                Origin = candidate.Origin,
+                Snapshot = candidate.Snapshot,
+                Evaluation = candidate.Evaluation
+            };
+        }
 
-                string tagName = candidate.TagName ?? "(sin tag)";
-                string role = candidate.GetAttribute("role") ?? "(none)";
-                string tabindex = candidate.GetAttribute("tabindex") ?? "(none)";
-                string ariaLabel = candidate.GetAttribute("aria-label") ?? "(none)";
-                var size = candidate.Size;
-                string text = BuildTextPreview(ReadElementText(candidate), 80);
-                return $"origen={FormatDiagnosticValue(origin)}; tag={tagName}; role={role}; tabindex={tabindex}; aria-label={ariaLabel}; texto={text}; size={size.Width}x{size.Height}; icono={FormatDiagnosticFlag(ElementContainsHeadphonesIcon(candidate))}; en-menu={FormatDiagnosticFlag(IsInsideAttachmentMenuOrDropdown(candidate))}";
-            }
-            catch (StaleElementReferenceException)
+        private string GetAudioOptionCandidateDiagnostics(AudioOptionCandidateInfo candidate)
+        {
+            return FormatAudioOptionCandidateDiagnostic(ToAudioOptionDiagnosticItem(candidate));
+        }
+
+        internal static string FormatAudioOptionCandidateDiagnostic(AudioOptionCandidateDiagnosticItem candidate)
+        {
+            return
+                $"origen={FormatDiagnosticValue(candidate.Origin)}; " +
+                $"tag={FormatDiagnosticValue(candidate.Snapshot.TagName)}; " +
+                $"role={FormatDiagnosticValue(candidate.Snapshot.Role)}; " +
+                $"tabindex={FormatDiagnosticValue(candidate.Snapshot.TabIndex)}; " +
+                $"texto={BuildTextPreview(candidate.Snapshot.Text, 80)}; " +
+                $"size={candidate.Snapshot.Width}x{candidate.Snapshot.Height}; " +
+                $"icono={FormatDiagnosticFlag(candidate.Snapshot.HasHeadphonesIcon)}; " +
+                $"en-menu={FormatDiagnosticFlag(candidate.Snapshot.InAttachmentMenu)}; " +
+                $"panel-lateral={FormatDiagnosticFlag(candidate.Snapshot.InSidePane)}";
+        }
+
+        internal static string FormatRejectedAudioOptionCandidateDiagnostic(AudioOptionCandidateDiagnosticItem candidate)
+        {
+            string reason = candidate.Evaluation.Reason switch
             {
-                return $"origen={FormatDiagnosticValue(origin)}; stale";
-            }
-            catch (WebDriverException ex)
-            {
-                return $"origen={FormatDiagnosticValue(origin)}; no disponible ({SummarizeExceptionMessage(ex)})";
-            }
+                "fuera del menu de adjuntos" => "ignorado fuera del menu de adjuntos",
+                "panel lateral" => "ignorado por panel lateral",
+                _ => $"rechazado: {candidate.Evaluation.Reason}"
+            };
+
+            return $"{reason}; {FormatAudioOptionCandidateDiagnostic(candidate)}";
+        }
+
+        private static string BuildAttachmentMenuAudioDiagnostics(
+            ISearchContext searchContext,
+            AudioOptionCandidateSearchResult? searchResult = null)
+        {
+            searchResult ??= FindAudioOptionCandidateSearchResult(searchContext);
+            return BuildAttachmentMenuAudioDiagnostics(
+                HasAttachmentMenuContainer(searchContext),
+                GetFileInputDiagnosticItems(searchContext),
+                searchResult.AcceptedCandidates.Select(ToAudioOptionDiagnosticItem).ToList(),
+                searchResult.RejectedCandidates.Select(ToAudioOptionDiagnosticItem).ToList());
         }
 
         private bool TryClickAudioOptionAndWaitForEffect(
@@ -1626,9 +1709,10 @@ namespace Automate_Whatsapp.Logic
 
             for (int menuAttempt = 0; menuAttempt < 2; menuAttempt++)
             {
-                var candidates = FindAudioOptionCandidateInfos(driver);
+                AudioOptionCandidateSearchResult searchResult = FindAudioOptionCandidateSearchResult(driver);
+                var candidates = searchResult.AcceptedCandidates;
                 candidateBatchCounts.Add(candidates.Count);
-                string candidateSummary = BuildAudioOptionCandidatesDiagnostics(candidates);
+                string candidateSummary = BuildAttachmentMenuAudioDiagnostics(driver, searchResult);
                 LogAudioStage(AudioAttachStage.ClickAudioOption, candidateSummary);
 
                 if (candidates.Count == 0)
@@ -1942,7 +2026,7 @@ namespace Automate_Whatsapp.Logic
             return null;
         }
 
-        private static string GetFileInputsDiagnostics(ISearchContext searchContext)
+        private static IReadOnlyList<FileInputDiagnosticItem> GetFileInputDiagnosticItems(ISearchContext searchContext)
         {
             IReadOnlyCollection<IWebElement> inputs;
             try
@@ -1951,7 +2035,65 @@ namespace Automate_Whatsapp.Logic
             }
             catch (WebDriverException ex)
             {
-                return $"inputs file detectados: no disponible; error: {SummarizeExceptionMessage(ex)}";
+                return
+                [
+                    new FileInputDiagnosticItem
+                    {
+                        Error = SummarizeExceptionMessage(ex) ?? "no disponible"
+                    }
+                ];
+            }
+
+            var items = new List<FileInputDiagnosticItem>();
+            foreach (var input in inputs)
+            {
+                try
+                {
+                    string accept = input.GetAttribute("accept") ?? "";
+                    items.Add(new FileInputDiagnosticItem
+                    {
+                        Accept = accept,
+                        IsAudio = IsAudioAccept(accept),
+                        IsDisplayed = ReadElementFlag(input, element => element.Displayed),
+                        IsEnabled = ReadElementFlag(input, element => element.Enabled),
+                        Name = input.GetAttribute("name") ?? "",
+                        AriaLabel = input.GetAttribute("aria-label") ?? ""
+                    });
+                }
+                catch (StaleElementReferenceException)
+                {
+                    items.Add(new FileInputDiagnosticItem
+                    {
+                        Error = "stale"
+                    });
+                }
+                catch (WebDriverException ex)
+                {
+                    items.Add(new FileInputDiagnosticItem
+                    {
+                        Error = SummarizeExceptionMessage(ex) ?? "no disponible"
+                    });
+                }
+            }
+
+            return items;
+        }
+
+        private static string GetFileInputsDiagnostics(ISearchContext searchContext)
+        {
+            return BuildFileInputsDiagnosticSummary(GetFileInputDiagnosticItems(searchContext));
+        }
+
+        private static string GetFileInputsOperationalSummary(ISearchContext searchContext)
+        {
+            return BuildFileInputsOperationalSummary(GetFileInputDiagnosticItems(searchContext));
+        }
+
+        internal static string BuildFileInputsDiagnosticSummary(IReadOnlyList<FileInputDiagnosticItem> inputs)
+        {
+            if (inputs.Count == 1 && !string.IsNullOrWhiteSpace(inputs[0].Error))
+            {
+                return $"inputs file detectados: no disponible; error: {inputs[0].Error}";
             }
 
             if (inputs.Count == 0)
@@ -1959,44 +2101,38 @@ namespace Automate_Whatsapp.Logic
                 return "inputs file detectados: 0; accept: (ninguno)";
             }
 
-            var details = new List<string>();
-            int index = 0;
-            foreach (var input in inputs)
+            var details = inputs
+                .Take(5)
+                .Select((input, index) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(input.Error))
+                    {
+                        return $"#{index + 1}: {input.Error}";
+                    }
+
+                    return
+                        $"#{index + 1}: accept={FormatDiagnosticValue(input.Accept)}, " +
+                        $"audio={FormatDiagnosticFlag(input.IsAudio)}, " +
+                        $"visible={FormatDiagnosticFlag(input.IsDisplayed)}, " +
+                        $"enabled={FormatDiagnosticFlag(input.IsEnabled)}, " +
+                        $"name={FormatDiagnosticValue(input.Name)}, " +
+                        $"aria-label={FormatDiagnosticValue(input.AriaLabel)}";
+                })
+                .ToList();
+
+            if (inputs.Count > details.Count)
             {
-                index++;
-                try
-                {
-                    string accept = input.GetAttribute("accept") ?? "";
-                    string name = input.GetAttribute("name") ?? "";
-                    string ariaLabel = input.GetAttribute("aria-label") ?? "";
-                    string displayed = FormatDiagnosticFlag(ReadElementFlag(input, element => element.Displayed));
-                    string enabled = FormatDiagnosticFlag(ReadElementFlag(input, element => element.Enabled));
-                    string audio = FormatDiagnosticFlag(IsAudioAccept(accept));
-                    details.Add($"#{index}: accept={FormatDiagnosticValue(accept)}, audio={audio}, visible={displayed}, enabled={enabled}, name={FormatDiagnosticValue(name)}, aria-label={FormatDiagnosticValue(ariaLabel)}");
-                }
-                catch (StaleElementReferenceException)
-                {
-                    details.Add($"#{index}: stale");
-                }
-                catch (WebDriverException ex)
-                {
-                    details.Add($"#{index}: no disponible ({SummarizeExceptionMessage(ex)})");
-                }
+                details.Add($"+{inputs.Count - details.Count} inputs mas");
             }
 
-            return $"inputs file detectados: {inputs.Count}; {string.Join(" | ", details)}";
+            return $"inputs file detectados: {inputs.Count}; {string.Join(" | ", details)}{BuildOnlyImageInputSuffix(inputs)}";
         }
 
-        private static string GetFileInputsOperationalSummary(ISearchContext searchContext)
+        internal static string BuildFileInputsOperationalSummary(IReadOnlyList<FileInputDiagnosticItem> inputs)
         {
-            IReadOnlyCollection<IWebElement> inputs;
-            try
+            if (inputs.Count == 1 && !string.IsNullOrWhiteSpace(inputs[0].Error))
             {
-                inputs = searchContext.FindElements(By.CssSelector(Selectors.FileInputCss));
-            }
-            catch (WebDriverException ex)
-            {
-                return $"inputs file detectados: no disponible; accepts detectados: no disponible; error: {SummarizeExceptionMessage(ex)}";
+                return $"inputs file detectados: no disponible; accepts detectados: no disponible; error: {inputs[0].Error}";
             }
 
             if (inputs.Count == 0)
@@ -2004,24 +2140,43 @@ namespace Automate_Whatsapp.Logic
                 return "inputs file detectados: 0; accepts detectados: (ninguno)";
             }
 
-            var accepts = new List<string>();
-            foreach (var input in inputs)
+            var accepts = inputs
+                .Take(5)
+                .Select(input =>
+                {
+                    if (!string.IsNullOrWhiteSpace(input.Error))
+                    {
+                        return $"({input.Error})";
+                    }
+
+                    return FormatDiagnosticValue(input.Accept);
+                })
+                .ToList();
+
+            if (inputs.Count > accepts.Count)
             {
-                try
-                {
-                    accepts.Add(FormatDiagnosticValue(input.GetAttribute("accept")));
-                }
-                catch (StaleElementReferenceException)
-                {
-                    accepts.Add("(stale)");
-                }
-                catch (WebDriverException)
-                {
-                    accepts.Add("(no disponible)");
-                }
+                accepts.Add($"+{inputs.Count - accepts.Count} inputs mas");
             }
 
-            return $"inputs file detectados: {inputs.Count}; accepts detectados: {string.Join(", ", accepts)}";
+            return $"inputs file detectados: {inputs.Count}; accepts detectados: {string.Join(", ", accepts)}{BuildOnlyImageInputSuffix(inputs)}";
+        }
+
+        private static string BuildOnlyImageInputSuffix(IReadOnlyList<FileInputDiagnosticItem> inputs)
+        {
+            var validInputs = inputs.Where(input => string.IsNullOrWhiteSpace(input.Error)).ToList();
+            if (validInputs.Count == 0)
+            {
+                return "";
+            }
+
+            bool hasAudioInput = validInputs.Any(input => input.IsAudio);
+            bool onlyImageInputs = validInputs.All(input =>
+                !string.IsNullOrWhiteSpace(input.Accept)
+                && input.Accept.Contains("image", StringComparison.OrdinalIgnoreCase));
+
+            return !hasAudioInput && onlyImageInputs
+                ? "; solo input de imagen detectado"
+                : "";
         }
 
         private static bool IsAudioAccept(string? accept)
@@ -3534,9 +3689,21 @@ namespace Automate_Whatsapp.Logic
         {
             try
             {
-                return searchContext.FindElements(By.CssSelector(Selectors.AttachmentMenuIndicatorCss)).Count > 0
+                return HasAttachmentMenuContainer(searchContext)
                     || FindAudioFileInput(searchContext) != null
                     || FindAudioOptionCandidates(searchContext).Count > 0;
+            }
+            catch (WebDriverException)
+            {
+                return false;
+            }
+        }
+
+        private static bool HasAttachmentMenuContainer(ISearchContext searchContext)
+        {
+            try
+            {
+                return searchContext.FindElements(By.CssSelector(Selectors.AttachmentMenuIndicatorCss)).Count > 0;
             }
             catch (WebDriverException)
             {
@@ -3626,14 +3793,14 @@ namespace Automate_Whatsapp.Logic
 
         private string BuildAudioAttachDiagnostics()
         {
-            string inputsSummary = GetFileInputsOperationalSummary(driver);
+            string attachmentMenuDiagnostic = BuildAttachmentMenuAudioDiagnostics(driver);
             string audioTextDetected = FormatDiagnosticFlag(ReadDiagnosticFlag(() => HasAudioTextSignal(driver)));
             string audioIconDetected = FormatDiagnosticFlag(ReadDiagnosticFlag(() => HasAudioHeadphonesIconSignal(driver)));
             string nativeDialogDetected = GetNativeFileDialogDiagnostic();
             string healthSummary = ReadWhatsAppHealthSummary();
 
             return "Diagnostico audio: " +
-                $"{inputsSummary}; " +
+                $"{attachmentMenuDiagnostic}; " +
                 $"texto Audio detectado: {audioTextDetected}; " +
                 $"icono Audio detectado: {audioIconDetected}; " +
                 $"dialogo nativo detectado: {nativeDialogDetected}; " +

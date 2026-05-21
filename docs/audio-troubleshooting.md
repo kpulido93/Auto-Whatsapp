@@ -115,6 +115,14 @@ WhatsApp Web: no se encontro el boton enviar despues de adjuntar audio.
 
 En estos casos ElevenLabs ya genero el archivo, pero WhatsApp Web no expuso el control esperado. Verifica que el chat este abierto, que la sesion este lista, que Chrome no este bloqueado por un modal y que WhatsApp Web no haya cambiado su interfaz.
 
+Si el diagnostico muestra un candidato con algo como:
+
+```text
+texto="+1 (829) 733-3636 viernes Audio"; role=gridcell; en-menu=no
+```
+
+ese texto `Audio` viene de la lista de chats del panel lateral y no de la opcion real del menu de adjuntos. En particular, `en-menu=no` junto con `role=gridcell` o un elemento dentro de `#pane-side` indica ruido del panel lateral. La app ahora lo registra como candidato ignorado fuera del menu de adjuntos y no intenta hacer click sobre esa fila.
+
 ## Seguridad
 
 No commitees API keys, Voice IDs privados, archivos `.env`, capturas con secretos ni audios generados con datos de clientes. La configuracion local de ElevenLabs vive en `%AppData%/AutoWhatsApp/elevenlabs-settings.json` y no debe versionarse.
