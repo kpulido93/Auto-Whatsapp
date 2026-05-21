@@ -100,6 +100,36 @@ namespace Automate_Whatsapp.Logic
         {
             public IWebElement Element { get; init; } = null!;
             public string Origin { get; init; } = "";
+            public AudioOptionCandidateSnapshot Snapshot { get; init; } = new();
+            public AudioOptionCandidateEvaluation Evaluation { get; init; } = new();
+        }
+
+        internal sealed class AudioOptionCandidateSnapshot
+        {
+            public string TagName { get; init; } = "";
+            public string Role { get; init; } = "";
+            public string TabIndex { get; init; } = "";
+            public string Text { get; init; } = "";
+            public bool HasExactAudioText { get; init; }
+            public bool HasHeadphonesIcon { get; init; }
+            public bool InAttachmentMenu { get; init; }
+            public bool InSidePane { get; init; }
+            public bool HasGridAncestor { get; init; }
+            public bool HasGridCellAncestor { get; init; }
+            public bool HasListItemAncestor { get; init; }
+            public bool HasChildElements { get; init; }
+            public bool IsDisplayed { get; init; }
+            public bool IsEnabled { get; init; }
+            public bool AriaDisabled { get; init; }
+            public bool IsInsideFooter { get; init; }
+            public int Width { get; init; }
+            public int Height { get; init; }
+        }
+
+        internal sealed class AudioOptionCandidateEvaluation
+        {
+            public bool Accepted { get; init; }
+            public string Reason { get; init; } = "";
         }
 
         private sealed class AudioOutgoingBaseline
@@ -612,7 +642,7 @@ namespace Automate_Whatsapp.Logic
                         return blockedWhileWaitingAudioEntryPoint;
                     }
 
-                    return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputBeforeClick, "no se encontro input[type=file] compatible con audio ni opcion Audio visible en el menu de adjuntos"), ex);
+                    return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputBeforeClick, "no se encontro input[type=file] compatible con audio ni opcion Audio dentro del menu de adjuntos"), ex);
                 }
 
                 string inputsBeforeAudioClick = GetFileInputsOperationalSummary(driver);
@@ -621,7 +651,7 @@ namespace Automate_Whatsapp.Logic
                     IWebElement? bestAudioOption = FindBestClickableAudioOption(driver, out string audioOptionDiagnostics);
                     if (bestAudioOption == null)
                     {
-                        return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputBeforeClick, $"no se encontro input[type=file] compatible con audio ni opcion Audio visible. Inputs antes del click: {inputsBeforeAudioClick}. Candidatos Audio: {audioOptionDiagnostics}"));
+                        return AudioUiFailure(BuildAudioStageFailureMessage(AudioAttachStage.FindInputBeforeClick, $"no se encontro input[type=file] compatible con audio ni opcion Audio dentro del menu de adjuntos. Inputs antes del click: {inputsBeforeAudioClick}. Candidatos Audio: {audioOptionDiagnostics}"));
                     }
 
                     int audioOptionDiagnosticSeparator = audioOptionDiagnostics.IndexOf(';');
@@ -1200,12 +1230,21 @@ namespace Automate_Whatsapp.Logic
             {
                 foreach (var candidate in searchContext.FindElements(locator))
                 {
-                    if (IsLikelyAudioMenuItem(candidate) && !ContainsEquivalentElement(candidates, candidate))
+                    AudioOptionCandidateSnapshot? snapshot = TryBuildAudioOptionCandidateSnapshot(candidate);
+                    if (snapshot == null)
+                    {
+                        continue;
+                    }
+
+                    AudioOptionCandidateEvaluation evaluation = EvaluateAudioOptionCandidate(snapshot);
+                    if (evaluation.Accepted && !ContainsEquivalentElement(candidates, candidate))
                     {
                         candidates.Add(new AudioOptionCandidateInfo
                         {
                             Element = candidate,
-                            Origin = origin
+                            Origin = origin,
+                            Snapshot = snapshot,
+                            Evaluation = evaluation
                         });
                     }
                 }
@@ -1237,78 +1276,157 @@ namespace Automate_Whatsapp.Logic
             return false;
         }
 
-        private static bool IsLikelyAudioMenuItem(IWebElement element)
+        internal static AudioOptionCandidateEvaluation EvaluateAudioOptionCandidate(AudioOptionCandidateSnapshot snapshot)
+        {
+            ArgumentNullException.ThrowIfNull(snapshot);
+
+            if (!snapshot.IsDisplayed)
+            {
+                return RejectAudioOptionCandidate("no visible");
+            }
+
+            if (!snapshot.IsEnabled)
+            {
+                return RejectAudioOptionCandidate("no habilitado");
+            }
+
+            if (snapshot.IsInsideFooter)
+            {
+                return RejectAudioOptionCandidate("footer del chat");
+            }
+
+            if (snapshot.AriaDisabled)
+            {
+                return RejectAudioOptionCandidate("aria-disabled");
+            }
+
+            if (snapshot.InSidePane || IsSidePaneListCandidate(snapshot))
+            {
+                return RejectAudioOptionCandidate("panel lateral");
+            }
+
+            if (!snapshot.InAttachmentMenu)
+            {
+                return RejectAudioOptionCandidate("fuera del menu de adjuntos");
+            }
+
+            if (!snapshot.HasExactAudioText && !snapshot.HasHeadphonesIcon)
+            {
+                return RejectAudioOptionCandidate("sin señal de Audio");
+            }
+
+            bool isButtonLike =
+                string.Equals(snapshot.TagName, "button", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(snapshot.TagName, "li", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(snapshot.Role, "button", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(snapshot.Role, "menuitem", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(snapshot.TabIndex, "0", StringComparison.OrdinalIgnoreCase);
+            bool isDiv = string.Equals(snapshot.TagName, "div", StringComparison.OrdinalIgnoreCase);
+            bool hasReasonableMenuItemSize =
+                snapshot.Width >= 72
+                && snapshot.Height >= 28
+                && snapshot.Width <= 900
+                && snapshot.Height <= 180;
+            bool hasMinimalClickableSize = snapshot.Width >= 40 && snapshot.Height >= 20;
+
+            if (isButtonLike)
+            {
+                return (hasReasonableMenuItemSize || hasMinimalClickableSize)
+                    ? AcceptAudioOptionCandidate()
+                    : RejectAudioOptionCandidate("no clickeable");
+            }
+
+            if (isDiv)
+            {
+                return hasReasonableMenuItemSize && snapshot.HasChildElements
+                    ? AcceptAudioOptionCandidate()
+                    : RejectAudioOptionCandidate("no clickeable");
+            }
+
+            return hasReasonableMenuItemSize && snapshot.HasChildElements
+                ? AcceptAudioOptionCandidate()
+                : RejectAudioOptionCandidate("no clickeable");
+        }
+
+        private static AudioOptionCandidateEvaluation AcceptAudioOptionCandidate()
+        {
+            return new AudioOptionCandidateEvaluation
+            {
+                Accepted = true,
+                Reason = "aceptado"
+            };
+        }
+
+        private static AudioOptionCandidateEvaluation RejectAudioOptionCandidate(string reason)
+        {
+            return new AudioOptionCandidateEvaluation
+            {
+                Accepted = false,
+                Reason = reason
+            };
+        }
+
+        private static bool IsSidePaneListCandidate(AudioOptionCandidateSnapshot snapshot)
+        {
+            return snapshot.InSidePane
+                && (snapshot.HasGridAncestor
+                    || snapshot.HasGridCellAncestor
+                    || snapshot.HasListItemAncestor
+                    || string.Equals(snapshot.Role, "grid", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(snapshot.Role, "gridcell", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(snapshot.Role, "listitem", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static AudioOptionCandidateSnapshot? TryBuildAudioOptionCandidateSnapshot(IWebElement element)
         {
             try
             {
-                if (!element.Displayed || !element.Enabled || IsInsideFooter(element))
-                {
-                    return false;
-                }
-
-                if (string.Equals(element.GetAttribute("aria-disabled"), "true", StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-
-                bool hasAudioText = ElementContainsExactAudioText(element);
-                bool hasHeadphonesIcon = ElementContainsHeadphonesIcon(element);
-                if (!hasAudioText && !hasHeadphonesIcon)
-                {
-                    return false;
-                }
-
-                string tagName = element.TagName ?? "";
+                string text = ReadElementText(element);
                 string role = element.GetAttribute("role") ?? "";
-                string tabindex = element.GetAttribute("tabindex") ?? "";
-                bool isButtonLike =
-                    string.Equals(tagName, "button", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(tagName, "li", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(role, "button", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(role, "menuitem", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(tabindex, "0", StringComparison.OrdinalIgnoreCase);
-                bool isDiv = string.Equals(tagName, "div", StringComparison.OrdinalIgnoreCase);
-                bool isInsideMenu = IsInsideAttachmentMenuOrDropdown(element);
-                bool hasChildElements = ElementHasChildElements(element);
-
+                string tabIndex = element.GetAttribute("tabindex") ?? "";
+                string ariaDisabled = element.GetAttribute("aria-disabled") ?? "";
                 var size = element.Size;
-                bool hasReasonableMenuItemSize =
-                    size.Width >= 72
-                    && size.Height >= 28
-                    && size.Width <= 900
-                    && size.Height <= 180;
-                bool hasMinimalClickableSize = size.Width >= 40 && size.Height >= 20;
 
-                if (isButtonLike)
+                return new AudioOptionCandidateSnapshot
                 {
-                    return hasReasonableMenuItemSize || (isInsideMenu && hasMinimalClickableSize);
-                }
-
-                if (isDiv)
-                {
-                    if (!hasReasonableMenuItemSize || !hasChildElements)
-                    {
-                        return false;
-                    }
-
-                    return isInsideMenu || hasHeadphonesIcon;
-                }
-
-                return isInsideMenu && hasReasonableMenuItemSize && hasChildElements;
+                    TagName = element.TagName ?? "",
+                    Role = role,
+                    TabIndex = tabIndex,
+                    Text = text,
+                    HasExactAudioText = ElementContainsExactAudioText(element, text),
+                    HasHeadphonesIcon = ElementContainsHeadphonesIcon(element),
+                    InAttachmentMenu = IsInsideAttachmentMenuOrDropdown(element),
+                    InSidePane = IsInsideSidePane(element),
+                    HasGridAncestor = HasAncestorOrSelfRole(element, "grid"),
+                    HasGridCellAncestor = HasAncestorOrSelfRole(element, "gridcell"),
+                    HasListItemAncestor = HasAncestorOrSelfRole(element, "listitem"),
+                    HasChildElements = ElementHasChildElements(element),
+                    IsDisplayed = element.Displayed,
+                    IsEnabled = element.Enabled,
+                    AriaDisabled = string.Equals(ariaDisabled, "true", StringComparison.OrdinalIgnoreCase),
+                    IsInsideFooter = IsInsideFooter(element),
+                    Width = size.Width,
+                    Height = size.Height
+                };
             }
             catch (StaleElementReferenceException)
             {
-                return false;
+                return null;
             }
             catch (WebDriverException)
             {
-                return false;
+                return null;
             }
         }
 
         private static bool ElementContainsExactAudioText(IWebElement element)
         {
-            if (ContainsExactAudioTextLine(ReadElementText(element)))
+            return ElementContainsExactAudioText(element, ReadElementText(element));
+        }
+
+        private static bool ElementContainsExactAudioText(IWebElement element, string text)
+        {
+            if (ContainsExactAudioTextLine(text))
             {
                 return true;
             }
@@ -1373,6 +1491,38 @@ namespace Automate_Whatsapp.Logic
             }
         }
 
+        private static bool IsInsideSidePane(IWebElement element)
+        {
+            try
+            {
+                return element.FindElements(By.XPath("./ancestor-or-self::*[@id='pane-side']")).Count > 0;
+            }
+            catch (StaleElementReferenceException)
+            {
+                return false;
+            }
+            catch (WebDriverException)
+            {
+                return false;
+            }
+        }
+
+        private static bool HasAncestorOrSelfRole(IWebElement element, string role)
+        {
+            try
+            {
+                return element.FindElements(By.XPath($"./ancestor-or-self::*[@role='{role}']")).Count > 0;
+            }
+            catch (StaleElementReferenceException)
+            {
+                return false;
+            }
+            catch (WebDriverException)
+            {
+                return false;
+            }
+        }
+
         private static bool ElementHasChildElements(IWebElement element)
         {
             try
@@ -1393,7 +1543,7 @@ namespace Automate_Whatsapp.Logic
         {
             if (candidates.Count == 0)
             {
-                return "candidatos Audio encontrados: 0";
+                return "candidatos Audio dentro del menu de adjuntos: 0";
             }
 
             var details = candidates
@@ -1406,7 +1556,7 @@ namespace Automate_Whatsapp.Logic
                 details.Add($"+{candidates.Count - details.Count} candidatos mas");
             }
 
-            return $"candidatos Audio encontrados: {candidates.Count}; {string.Join(" | ", details)}";
+            return $"candidatos Audio dentro del menu de adjuntos: {candidates.Count}; {string.Join(" | ", details)}";
         }
 
         private string GetAudioOptionCandidateDiagnostics(AudioOptionCandidateInfo candidate)

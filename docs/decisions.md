@@ -87,15 +87,16 @@ Consecuencia operativa:
 
 ## Adjuntos de audio en WhatsApp Web
 
-El audio se adjunta mediante un `input[type=file]` compatible. Si ese input no existe al abrir el menu de adjuntos, la app activa la opcion visible `Audio` y vuelve a buscar el input compatible.
+El audio se adjunta mediante un `input[type=file]` compatible. Si ese input no existe al abrir el menu de adjuntos, la app activa la opcion visible `Audio` dentro de ese menu y vuelve a buscar el input compatible.
 
 Motivos:
 
 - Algunas versiones de WhatsApp Web exponen el input de audio solo despues de activar la opcion visible `Audio`.
 - Selenium adjunta el archivo con `input.SendKeys(fullAudioPath)` cuando existe input compatible; si WhatsApp abre el dialogo nativo tras activar `Audio`, se usa como fallback controlado.
 - Se considera compatible solo un input cuyo `accept` contenga `audio`, `.ogg`, `.opus`, `.mp3`, `.m4a` o `.wav`.
-- La opcion `Audio` se localiza como una lista ordenada de candidatos: primero elementos `role='button'` o `role='menuitem'`, luego `button`, `li` o `tabindex='0'`, despues ancestros comunes que combinen texto `Audio` e icono `ic-headphones-filled`, filas del menu de adjuntos y finalmente el selector legacy basado en `li`.
-- Los `div` no se aceptan por si solos: deben tener senales de item de menu, tamano razonable, texto exacto `Audio` o icono de audifonos, estar dentro o asociados al menu de adjuntos, y no pertenecer al footer del chat ni ser un contenedor interno de tipografia.
+- La opcion `Audio` se localiza como una lista ordenada de candidatos, pero solo se aceptan elementos dentro del menu de adjuntos o de sus items (`role='menu'`, `role='menuitem'` o `data-animate-dropdown-item='true'`).
+- Las filas del panel lateral, por ejemplo previews de chats con una linea visible `Audio`, se ignoran aunque tengan `tabindex='0'`, tamano clickeable o texto exacto `Audio`.
+- Los `div` no se aceptan por si solos: deben tener senales de item de menu, tamano razonable, texto exacto `Audio` o icono de audifonos, estar dentro del menu de adjuntos, y no pertenecer al footer del chat ni al panel lateral.
 - `SendKeys` solo confirma que Selenium entrego la ruta al input; no confirma que WhatsApp haya creado el adjunto ni que el envio haya salido.
 - Si WhatsApp abre el dialogo nativo `Abrir/Open`, la app debe cargar la ruta del audio o cerrar el dialogo antes de continuar.
 - La deteccion del dialogo nativo se separa en estricta y amplia. La estricta exige clase `#32770`, titulo `Abrir/Open` y proceso compatible con Chrome; solo esa ruta permite pegar la ruta del archivo.
