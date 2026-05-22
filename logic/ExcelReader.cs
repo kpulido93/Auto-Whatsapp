@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using ClosedXML.Excel;
 
 namespace Automate_Whatsapp.Logic
@@ -17,6 +18,10 @@ namespace Automate_Whatsapp.Logic
         public string OptInAtDisplay => OptInAt.HasValue
             ? OptInAt.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             : "";
+        public int? TemplateNumber { get; init; }
+        public string Bank { get; init; } = "";
+        public string DebtorName { get; init; } = "";
+        public string ResolvedMessage { get; init; } = "";
         public bool HasInvalidData { get; init; }
         public bool IsBlockedByDoNotContact { get; init; }
         public bool LacksExplicitOptIn { get; init; }
@@ -36,21 +41,51 @@ namespace Automate_Whatsapp.Logic
 
     public static class ExcelReader
     {
-        // Devuelve lista de (teléfono, mensaje, toAudio)
+        private const string ValidRowStatus = "Válida";
+        private const string InvalidToAudioMessage = "toAudio inválido. Usa true, false, 1 o 0.";
+        private const string InvalidOptInMessage = "optIn inválido. Usa true, false, 1 o 0.";
+        private const string MissingOptInSourceMessage = "Falta optInSource";
+        private const string InvalidOptInAtMessage = "optInAt inválido. Usa una fecha válida.";
+        private const string InvalidTemplateNumberMessage = "Plantilla inválida. Usa un número entero.";
+        private const string BlockedByDoNotContactMessage = "Bloqueado por lista no contactar";
+
+        private static readonly string CountryCodeHeader = NormalizeHeader("Código país");
+        private static readonly string PhoneHeader = NormalizeHeader("Teléfono");
+        private static readonly string MessageHeader = NormalizeHeader("Mensaje");
+        private static readonly string TemplateHeader = NormalizeHeader("Plantilla");
+        private static readonly string BankHeader = NormalizeHeader("Banco");
+        private static readonly string DebtorNameHeader = NormalizeHeader("Nombre deudor");
+        private static readonly string ToAudioHeader = NormalizeHeader("toAudio");
+        private static readonly string OptInHeader = NormalizeHeader("optIn");
+        private static readonly string OptInSourceHeader = NormalizeHeader("optInSource");
+        private static readonly string OptInAtHeader = NormalizeHeader("optInAt");
+
         public static List<(string countrycode, string phone, string message, bool toAudio)> ReadMessages(
             string filePath,
             IReadOnlyCollection<DoNotContactEntry>? doNotContactEntries = null)
         {
-            return ReadOutboundMessages(filePath, doNotContactEntries)
+            return ReadPreviewResult(filePath, doNotContactEntries).Rows
+                .Where(row => row.IsSendable)
+                .Select(row => (row.CountryCode, row.Phone, row.Message, row.ToAudio))
+                .ToList();
+        }
+
+        public static List<(string countrycode, string phone, string message, bool toAudio)> ReadMessages(
+            string filePath,
+            string? messageTemplateConfigPath)
+        {
+            return ReadPreviewResult(filePath, null, messageTemplateConfigPath).Rows
+                .Where(row => row.IsSendable)
                 .Select(row => (row.CountryCode, row.Phone, row.Message, row.ToAudio))
                 .ToList();
         }
 
         public static List<OutboundMessage> ReadOutboundMessages(
             string filePath,
-            IReadOnlyCollection<DoNotContactEntry>? doNotContactEntries = null)
+            IReadOnlyCollection<DoNotContactEntry>? doNotContactEntries = null,
+            string? messageTemplateConfigPath = null)
         {
-            return ReadPreviewResult(filePath, doNotContactEntries)
+            return ReadPreviewResult(filePath, doNotContactEntries, messageTemplateConfigPath)
                 .Rows
                 .Where(row => row.IsSendable)
                 .Select(row => new OutboundMessage(
@@ -60,7 +95,10 @@ namespace Automate_Whatsapp.Logic
                     row.ToAudio,
                     true,
                     row.OptInSource,
-                    row.OptInAt))
+                    row.OptInAt,
+                    row.DebtorName,
+                    row.TemplateNumber,
+                    row.Bank))
                 .ToList();
         }
 
@@ -71,9 +109,17 @@ namespace Automate_Whatsapp.Logic
             return ReadPreviewResult(filePath, doNotContactEntries).Rows;
         }
 
+        public static List<ExcelMessagePreviewRow> ReadPreview(
+            string filePath,
+            string? messageTemplateConfigPath)
+        {
+            return ReadPreviewResult(filePath, null, messageTemplateConfigPath).Rows;
+        }
+
         public static ExcelPreviewReadResult ReadPreviewResult(
             string filePath,
-            IReadOnlyCollection<DoNotContactEntry>? doNotContactEntries = null)
+            IReadOnlyCollection<DoNotContactEntry>? doNotContactEntries = null,
+            string? messageTemplateConfigPath = null)
         {
             var rows = new List<ExcelMessagePreviewRow>();
             var blockedPhones = DoNotContactStore.CreateNormalizedPhoneSet(doNotContactEntries);
@@ -86,53 +132,94 @@ namespace Automate_Whatsapp.Logic
                 return new ExcelPreviewReadResult { Rows = rows };
             }
 
-            var headerMap = BuildHeaderMap(headerRow);
-            int optInColumnIndex = FindColumnIndex(headerMap, "optin");
-            int optInSourceColumnIndex = FindColumnIndex(headerMap, "optinsource");
-            int optInAtColumnIndex = FindColumnIndex(headerMap, "optinat");
+            Dictionary<string, int> headerIndexes = BuildHeaderIndexes(headerRow);
+            Dictionary<int, MessageTemplate> templatesByNumber = LoadTemplatesByNumber(messageTemplateConfigPath);
 
-            foreach (var row in worksheet.RowsUsed().Where(item => item.RowNumber() > headerRow.RowNumber()))
+            bool hasOptInColumn = headerIndexes.ContainsKey(OptInHeader);
+            bool hasOptInSourceColumn = headerIndexes.ContainsKey(OptInSourceHeader);
+            bool hasOptInAtColumn = headerIndexes.ContainsKey(OptInAtHeader);
+
+            foreach (var row in worksheet.RowsUsed().Where(currentRow => currentRow.RowNumber() > headerRow.RowNumber()))
             {
-                string countryCode = row.Cell(1).GetString().Trim();
-                string phone = row.Cell(2).GetString().Trim().Replace(" ", "");
-                string message = row.Cell(3).GetString().Trim();
+                string countryCode = GetCellString(row, headerIndexes, CountryCodeHeader);
+                string phone = GetCellString(row, headerIndexes, PhoneHeader).Replace(" ", "");
+                string legacyMessage = GetCellString(row, headerIndexes, MessageHeader);
+                string bank = GetCellString(row, headerIndexes, BankHeader);
+                string debtorName = GetCellString(row, headerIndexes, DebtorNameHeader);
                 string normalizedPhone = DoNotContactEntry.NormalizePhone(countryCode, phone);
-                bool toAudio = ParseToAudio(row.Cell(4));
-                bool? optIn = null;
-                string optInSource = GetOptionalCellString(row, optInSourceColumnIndex);
-                DateTime? optInAt = null;
 
                 var validationIssues = new List<string>();
+
                 if (string.IsNullOrWhiteSpace(phone))
                 {
                     validationIssues.Add("Falta teléfono");
                 }
 
-                if (string.IsNullOrWhiteSpace(message))
+                bool toAudio = false;
+                if (!TryParseOptionalBooleanLike(GetCell(row, headerIndexes, ToAudioHeader), out toAudio))
                 {
-                    validationIssues.Add("Falta mensaje");
+                    validationIssues.Add(InvalidToAudioMessage);
                 }
 
-                if (optInColumnIndex >= 0 && !TryParseOptIn(row.Cell(optInColumnIndex), out optIn))
+                bool? optIn = null;
+                if (hasOptInColumn && !TryParseOptIn(GetCell(row, headerIndexes, OptInHeader), out optIn))
                 {
-                    validationIssues.Add("optIn inválido (usa true, false, 1 o 0)");
+                    validationIssues.Add(InvalidOptInMessage);
                 }
 
+                string optInSource = GetCellString(row, headerIndexes, OptInSourceHeader);
                 if (optIn == true)
                 {
-                    if (optInSourceColumnIndex < 0)
+                    if (!hasOptInSourceColumn)
                     {
                         validationIssues.Add("Falta columna optInSource");
                     }
                     else if (string.IsNullOrWhiteSpace(optInSource))
                     {
-                        validationIssues.Add("Falta optInSource");
+                        validationIssues.Add(MissingOptInSourceMessage);
                     }
                 }
 
-                if (!TryParseOptionalDate(GetOptionalCell(row, optInAtColumnIndex), out optInAt))
+                DateTime? optInAt = null;
+                if (!TryParseOptionalDate(GetCell(row, headerIndexes, OptInAtHeader), out optInAt))
                 {
-                    validationIssues.Add("optInAt inválida");
+                    validationIssues.Add(InvalidOptInAtMessage);
+                }
+
+                int? templateNumber = null;
+                string resolvedMessage = legacyMessage;
+                string templateValue = GetCellString(row, headerIndexes, TemplateHeader);
+
+                if (!string.IsNullOrWhiteSpace(templateValue))
+                {
+                    if (!TryParseTemplateNumber(templateValue, out templateNumber))
+                    {
+                        validationIssues.Add(InvalidTemplateNumberMessage);
+                        resolvedMessage = string.Empty;
+                    }
+                    else if (!templatesByNumber.TryGetValue(templateNumber.Value, out var template))
+                    {
+                        validationIssues.Add($"La plantilla {templateNumber.Value} no existe o está deshabilitada.");
+                        resolvedMessage = string.Empty;
+                    }
+                    else
+                    {
+                        if (string.IsNullOrWhiteSpace(bank))
+                        {
+                            validationIssues.Add("Falta Banco");
+                        }
+
+                        if (string.IsNullOrWhiteSpace(debtorName))
+                        {
+                            validationIssues.Add("Falta Nombre deudor");
+                        }
+
+                        resolvedMessage = MessageTemplateRenderer.Render(template.Body, bank, debtorName);
+                    }
+                }
+                else if (string.IsNullOrWhiteSpace(legacyMessage))
+                {
+                    validationIssues.Add("Falta mensaje");
                 }
 
                 bool hasInvalidData = validationIssues.Count > 0;
@@ -151,11 +238,15 @@ namespace Automate_Whatsapp.Logic
                     RowNumber = row.RowNumber(),
                     CountryCode = countryCode,
                     Phone = phone,
-                    Message = message,
+                    Message = resolvedMessage,
                     ToAudio = toAudio,
                     OptIn = optIn,
                     OptInSource = optInSource,
                     OptInAt = optInAt,
+                    TemplateNumber = templateNumber,
+                    Bank = bank,
+                    DebtorName = debtorName,
+                    ResolvedMessage = resolvedMessage,
                     HasInvalidData = hasInvalidData,
                     IsBlockedByDoNotContact = isBlockedByDoNotContact,
                     LacksExplicitOptIn = lacksExplicitOptIn,
@@ -163,8 +254,8 @@ namespace Automate_Whatsapp.Logic
                     ValidationStatus = hasInvalidData
                         ? string.Join(", ", validationIssues)
                         : isBlockedByDoNotContact
-                            ? "Bloqueado por lista no contactar"
-                        : GetConsentStatus(optInColumnIndex, optIn)
+                            ? BlockedByDoNotContactMessage
+                            : GetConsentStatus(hasOptInColumn, optIn)
                 });
             }
 
@@ -172,44 +263,98 @@ namespace Automate_Whatsapp.Logic
             {
                 Rows = rows,
                 MissingConsentColumns = GetMissingConsentColumns(
-                    optInColumnIndex,
-                    optInSourceColumnIndex,
-                    optInAtColumnIndex)
+                    hasOptInColumn,
+                    hasOptInSourceColumn,
+                    hasOptInAtColumn)
             };
         }
 
-        private static bool ParseToAudio(IXLCell cell)
+        private static Dictionary<string, int> BuildHeaderIndexes(IXLRow headerRow)
         {
-            bool toAudio = false;
+            var headerIndexes = new Dictionary<string, int>(StringComparer.Ordinal);
 
-            if (cell.IsEmpty())
+            foreach (var cell in headerRow.CellsUsed())
             {
-                return toAudio;
+                string normalizedHeader = NormalizeHeader(cell.GetString());
+                if (string.IsNullOrWhiteSpace(normalizedHeader) || headerIndexes.ContainsKey(normalizedHeader))
+                {
+                    continue;
+                }
+
+                headerIndexes[normalizedHeader] = cell.Address.ColumnNumber;
+            }
+
+            return headerIndexes;
+        }
+
+        private static Dictionary<int, MessageTemplate> LoadTemplatesByNumber(string? messageTemplateConfigPath)
+        {
+            return MessageTemplateStore.LoadOrDefault(messageTemplateConfigPath)
+                .Where(template => template.Enabled)
+                .GroupBy(template => template.Number)
+                .ToDictionary(group => group.Key, group => group.Last());
+        }
+
+        private static IXLCell? GetCell(
+            IXLRow row,
+            IReadOnlyDictionary<string, int> headerIndexes,
+            string normalizedHeader)
+        {
+            return headerIndexes.TryGetValue(normalizedHeader, out int columnNumber)
+                ? row.Cell(columnNumber)
+                : null;
+        }
+
+        private static string GetCellString(
+            IXLRow row,
+            IReadOnlyDictionary<string, int> headerIndexes,
+            string normalizedHeader)
+        {
+            IXLCell? cell = GetCell(row, headerIndexes, normalizedHeader);
+            return cell == null ? string.Empty : cell.GetString().Trim();
+        }
+
+        private static bool TryParseOptionalBooleanLike(IXLCell? cell, out bool value)
+        {
+            value = false;
+
+            if (cell == null || cell.IsEmpty())
+            {
+                return true;
             }
 
             if (cell.DataType == XLDataType.Boolean)
             {
-                return cell.GetBoolean();
+                value = cell.GetBoolean();
+                return true;
             }
 
-            if (bool.TryParse(cell.GetString().Trim().ToLowerInvariant(), out bool result))
+            string rawValue = cell.GetString().Trim();
+            if (bool.TryParse(rawValue, out bool parsedBoolean))
             {
-                return result;
+                value = parsedBoolean;
+                return true;
             }
 
-            if (int.TryParse(cell.GetString().Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int intResult))
+            if (int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int numericValue))
             {
-                return intResult != 0;
+                if (numericValue is 0 or 1)
+                {
+                    value = numericValue == 1;
+                    return true;
+                }
+
+                return false;
             }
 
-            return toAudio;
+            return false;
         }
 
-        private static bool TryParseOptIn(IXLCell cell, out bool? optIn)
+        private static bool TryParseOptIn(IXLCell? cell, out bool? optIn)
         {
             optIn = null;
 
-            if (cell.IsEmpty())
+            if (cell == null || cell.IsEmpty())
             {
                 return true;
             }
@@ -233,7 +378,7 @@ namespace Automate_Whatsapp.Logic
             }
 
             if (int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int numericValue)
-                && (numericValue == 0 || numericValue == 1))
+                && numericValue is 0 or 1)
             {
                 optIn = numericValue == 1;
                 return true;
@@ -273,49 +418,37 @@ namespace Automate_Whatsapp.Logic
             return false;
         }
 
-        private static Dictionary<string, int> BuildHeaderMap(IXLRow headerRow)
+        private static bool TryParseTemplateNumber(string rawValue, out int? templateNumber)
         {
-            var headerMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            templateNumber = null;
 
-            foreach (var cell in headerRow.CellsUsed())
+            if (!int.TryParse(rawValue.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedTemplateNumber))
             {
-                string normalizedHeader = NormalizeHeader(cell.GetString());
-                if (string.IsNullOrWhiteSpace(normalizedHeader) || headerMap.ContainsKey(normalizedHeader))
-                {
-                    continue;
-                }
-
-                headerMap[normalizedHeader] = cell.Address.ColumnNumber;
+                return false;
             }
 
-            return headerMap;
-        }
-
-        private static int FindColumnIndex(IReadOnlyDictionary<string, int> headerMap, string normalizedHeader)
-        {
-            return headerMap.TryGetValue(normalizedHeader, out int columnIndex)
-                ? columnIndex
-                : -1;
+            templateNumber = parsedTemplateNumber;
+            return true;
         }
 
         private static IReadOnlyList<string> GetMissingConsentColumns(
-            int optInColumnIndex,
-            int optInSourceColumnIndex,
-            int optInAtColumnIndex)
+            bool hasOptInColumn,
+            bool hasOptInSourceColumn,
+            bool hasOptInAtColumn)
         {
             var missingColumns = new List<string>();
 
-            if (optInColumnIndex < 0)
+            if (!hasOptInColumn)
             {
                 missingColumns.Add("optIn");
             }
 
-            if (optInSourceColumnIndex < 0)
+            if (!hasOptInSourceColumn)
             {
                 missingColumns.Add("optInSource");
             }
 
-            if (optInAtColumnIndex < 0)
+            if (!hasOptInAtColumn)
             {
                 missingColumns.Add("optInAt");
             }
@@ -323,14 +456,14 @@ namespace Automate_Whatsapp.Logic
             return missingColumns;
         }
 
-        private static string GetConsentStatus(int optInColumnIndex, bool? optIn)
+        private static string GetConsentStatus(bool hasOptInColumn, bool? optIn)
         {
             if (optIn == true)
             {
-                return "Enviable";
+                return ValidRowStatus;
             }
 
-            if (optInColumnIndex < 0)
+            if (!hasOptInColumn)
             {
                 return "Sin opt-in explícito (falta columna optIn)";
             }
@@ -340,24 +473,31 @@ namespace Automate_Whatsapp.Logic
                 : "Falta opt-in explícito";
         }
 
-        private static string GetOptionalCellString(IXLRow row, int columnIndex)
+        private static string NormalizeHeader(string? header)
         {
-            return columnIndex > 0
-                ? row.Cell(columnIndex).GetString().Trim()
-                : "";
-        }
+            if (string.IsNullOrWhiteSpace(header))
+            {
+                return string.Empty;
+            }
 
-        private static IXLCell? GetOptionalCell(IXLRow row, int columnIndex)
-        {
-            return columnIndex > 0 ? row.Cell(columnIndex) : null;
-        }
+            string normalized = header.Trim().Normalize(NormalizationForm.FormD);
+            var builder = new StringBuilder(normalized.Length);
 
-        private static string NormalizeHeader(string value)
-        {
-            return string.Concat(value
-                .Trim()
-                .Where(char.IsLetterOrDigit))
-                .ToLowerInvariant();
+            foreach (char character in normalized)
+            {
+                UnicodeCategory category = CharUnicodeInfo.GetUnicodeCategory(character);
+                if (category == UnicodeCategory.NonSpacingMark)
+                {
+                    continue;
+                }
+
+                if (char.IsLetterOrDigit(character))
+                {
+                    builder.Append(char.ToLowerInvariant(character));
+                }
+            }
+
+            return builder.ToString();
         }
     }
 }

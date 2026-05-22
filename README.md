@@ -46,9 +46,8 @@ La primera ejecucion abre WhatsApp Web. Escanea el QR con el telefono asociado a
 
 ## Configuracion general de envio
 
-Desde **Configuración > Configuración general...** puedes definir la espera entre mensajes en minutos. El valor permitido va de 0 a 120 minutos.
+Desde **Configuración > Configuración general...** puedes definir la espera entre mensajes en minutos. El valor permitido va de 1 a 120 minutos.
 
-- `0` significa enviar el siguiente mensaje sin espera adicional.
 - La espera se aplica entre mensajes: no espera antes del primero ni despues del ultimo.
 - Durante la espera, los controles de pausa, reanudacion y cancelacion siguen funcionando.
 

@@ -138,9 +138,13 @@ public sealed class ExcelReaderTests
             using var workbook = new XLWorkbook(filePath);
             var worksheet = workbook.Worksheet("Mensajes");
 
-            Assert.Equal("optIn", worksheet.Cell(1, 5).GetString());
-            Assert.Equal("optInSource", worksheet.Cell(1, 6).GetString());
-            Assert.Equal("optInAt", worksheet.Cell(1, 7).GetString());
+            Assert.Equal("Plantilla", worksheet.Cell(1, 4).GetString());
+            Assert.Equal("Banco", worksheet.Cell(1, 5).GetString());
+            Assert.Equal("Nombre deudor", worksheet.Cell(1, 6).GetString());
+            Assert.Equal("toAudio", worksheet.Cell(1, 7).GetString());
+            Assert.Equal("optIn", worksheet.Cell(1, 8).GetString());
+            Assert.Equal("optInSource", worksheet.Cell(1, 9).GetString());
+            Assert.Equal("optInAt", worksheet.Cell(1, 10).GetString());
         }
         finally
         {

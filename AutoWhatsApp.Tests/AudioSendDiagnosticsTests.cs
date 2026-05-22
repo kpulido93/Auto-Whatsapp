@@ -23,6 +23,12 @@ public sealed class AudioSendDiagnosticsTests
         Assert.Equal(1, tts.ConvertCalls);
         Assert.Single(context.MessageResults);
         Assert.Equal(WhatsAppHealthStatus.TextToSpeechFailed, context.MessageResults[0].Status);
+        Assert.Equal("573001112233", context.MessageResults[0].Number);
+        Assert.Equal("Linea prueba", context.MessageResults[0].LineaWP);
+        Assert.Equal("Desconocido", context.MessageResults[0].HasWhatsApp);
+        Assert.Equal(
+            $"No enviado - {WhatsAppHealthStatus.TextToSpeechFailed}: {context.MessageResults[0].Message}",
+            context.MessageResults[0].MessageState);
         Assert.Contains(context.Logs, log => log.Contains("Generando audio para 573001112233", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(context.Logs, log => log.Contains("ElevenLabs no devolvio una ruta de audio", StringComparison.OrdinalIgnoreCase));
     }
@@ -43,6 +49,7 @@ public sealed class AudioSendDiagnosticsTests
         Assert.Equal(0, sender.SendAudioCalls);
         Assert.Single(context.MessageResults);
         Assert.Equal(WhatsAppHealthStatus.AudioFileInvalid, context.MessageResults[0].Status);
+        Assert.Equal("Desconocido", context.MessageResults[0].HasWhatsApp);
         Assert.Contains(context.Logs, log => log.Contains("archivo no existe", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -68,6 +75,7 @@ public sealed class AudioSendDiagnosticsTests
             Assert.Equal(0, sender.SendAudioCalls);
             Assert.Single(context.MessageResults);
             Assert.Equal(WhatsAppHealthStatus.AudioFileInvalid, context.MessageResults[0].Status);
+            Assert.Equal("Desconocido", context.MessageResults[0].HasWhatsApp);
             Assert.Contains(context.Logs, log => log.Contains("esta vacio", StringComparison.OrdinalIgnoreCase));
         }
         finally

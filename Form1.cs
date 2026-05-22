@@ -10,10 +10,12 @@ namespace Automate_Whatsapp
     public partial class Form1 : Form
     {
         private List<WhatsAppLine> whatsAppLines = new();
+        private readonly List<WhatsAppMessageResult> currentSendResults = new();
         private string? selectedWhatsAppLineId;
         private bool autoFallbackEnabled;
         private HashSet<string> selectedLineIdsForRun = new(StringComparer.OrdinalIgnoreCase);
         private WhatsAppSendOrchestrator sendOrchestrator = null!;
+        private ToolStripMenuItem exportReportToolStripMenuItem = null!;
         private AutoWhatsAppSettings appSettings = AutoWhatsAppSettings.Default;
         private ElevenLabsSettings elevenLabsSettings = ElevenLabsSettings.FromEnvironment();
         private string elevenLabsStatusText = "No configurado";
@@ -65,6 +67,7 @@ namespace Automate_Whatsapp
         public Form1()
         {
             InitializeComponent();
+            InitializeReportExportMenu();
             InitializeConfigurationStateFromUi();
             ApplyApplicationIcon();
             LoadAppSettings();
@@ -199,6 +202,25 @@ namespace Automate_Whatsapp
             UpdateMenuState();
         }
 
+        private void InitializeReportExportMenu()
+        {
+            exportReportToolStripMenuItem = new ToolStripMenuItem
+            {
+                Name = "exportReportToolStripMenuItem",
+                Size = new Size(216, 22),
+                Text = "Exportar reporte...",
+                Enabled = false
+            };
+            exportReportToolStripMenuItem.Click += exportReportToolStripMenuItem_Click;
+
+            int separatorIndex = archivoToolStripMenuItem.DropDownItems.IndexOf(archivoToolStripSeparator);
+            int insertIndex = separatorIndex >= 0
+                ? separatorIndex
+                : archivoToolStripMenuItem.DropDownItems.Count;
+
+            archivoToolStripMenuItem.DropDownItems.Insert(insertIndex, exportReportToolStripMenuItem);
+        }
+
         private void configuracionGeneralToolStripMenuItem_Click(object sender, EventArgs e)
         {
             using var configurationDialog = new ConfigurationDialog(
@@ -251,6 +273,11 @@ namespace Automate_Whatsapp
         {
             seleccionarExcelToolStripMenuItem.Enabled = btnSelectFile.Enabled;
             descargarPlantillaExcelToolStripMenuItem.Enabled = btnDownloadTemplate.Enabled;
+            if (exportReportToolStripMenuItem != null)
+            {
+                exportReportToolStripMenuItem.Enabled = currentSendResults.Count > 0 && !isSending;
+            }
+
             configuracionGeneralToolStripMenuItem.Enabled = true;
             mostrarVistaPreviaExcelToolStripMenuItem.Enabled = chkShowExcelPreview.Enabled;
             mostrarVistaPreviaExcelToolStripMenuItem.Checked = chkShowExcelPreview.Checked;
@@ -710,6 +737,7 @@ namespace Automate_Whatsapp
         {
             sendOrchestrator = new WhatsAppSendOrchestrator(whatsAppLines);
             sendOrchestrator.Log += message => Ui(() => Log(message));
+            sendOrchestrator.MessageResult += result => Ui(() => RegisterSendMessageResult(result));
             sendOrchestrator.ProgressChanged += progress => Ui(() =>
             {
                 SetProgressFeedback(progress.Processed, progress.Total);
@@ -733,6 +761,12 @@ namespace Automate_Whatsapp
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             });
+        }
+
+        private void RegisterSendMessageResult(WhatsAppMessageResult result)
+        {
+            currentSendResults.Add(result);
+            UpdateMenuState();
         }
 
         private void Ui(Action action)
@@ -1046,6 +1080,59 @@ namespace Automate_Whatsapp
             }
         }
 
+        private void exportReportToolStripMenuItem_Click(object? sender, EventArgs e)
+        {
+            ExportSendReport();
+        }
+
+        private void ExportSendReport()
+        {
+            if (currentSendResults.Count == 0)
+            {
+                MessageBox.Show(
+                    "No hay resultados para exportar.",
+                    "Exportar reporte",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            using var saveFileDialog = new SaveFileDialog
+            {
+                AddExtension = true,
+                DefaultExt = "xlsx",
+                FileName = $"reporte_envio_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx",
+                Filter = "Libro de Excel (*.xlsx)|*.xlsx",
+                OverwritePrompt = true,
+                Title = "Guardar reporte de envío"
+            };
+
+            if (saveFileDialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+
+            try
+            {
+                SendReportExporter.ExportToExcel(saveFileDialog.FileName, currentSendResults.ToList());
+                Log($"Reporte de envío exportado: {saveFileDialog.FileName}");
+                MessageBox.Show(
+                    "El reporte de envío se exportó correctamente.",
+                    "Exportar reporte",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log($"❌ No se pudo exportar el reporte de envío: {ex.Message}");
+                MessageBox.Show(
+                    "No se pudo exportar el reporte de envío.",
+                    "Exportar reporte",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
         private async Task SetSelectedExcelFileAsync(string selectedPath)
         {
             ResetDryRunApproval();
@@ -1350,7 +1437,10 @@ namespace Automate_Whatsapp
                     row.ToAudio,
                     true,
                     row.OptInSource,
-                    row.OptInAt))
+                    row.OptInAt,
+                    row.DebtorName,
+                    row.TemplateNumber,
+                    row.Bank))
                 .ToList();
         }
 
@@ -1928,6 +2018,8 @@ namespace Automate_Whatsapp
             var configurationState = CreateConfigurationState();
             var selectedLine = ResolveWhatsAppLineById(configurationState.SelectedWhatsAppLineId);
 
+            currentSendResults.Clear();
+            UpdateMenuState();
             Log(FormatDelayBetweenMessagesLog(configurationState.DelayBetweenMessagesMinutes));
 
             var summary = await sendOrchestrator.SendAsync(
@@ -1970,4 +2062,3 @@ namespace Automate_Whatsapp
         }
     }
 }
-

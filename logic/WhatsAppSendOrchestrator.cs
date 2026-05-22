@@ -163,6 +163,15 @@ public sealed class WhatsAppSendOrchestrator
         var selectedLineIdsForRun = new HashSet<string>(
             options.SelectedLineIdsForRun ?? Array.Empty<string>(),
             StringComparer.OrdinalIgnoreCase);
+        List<WhatsAppLine> runLines = whatsAppLines
+            .Where(line => line.Enabled)
+            .Where(line => selectedLineIdsForRun.Contains(line.Id))
+            .Where(line => line.OperationalState == WhatsAppLineOperationalState.Ready)
+            .OrderBy(line => line.Priority)
+            .ThenBy(line => line.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        bool useRoundRobin = runLines.Count > 1;
+        string? pendingLineChangeSourceId = null;
 
         EmitState(WhatsAppSendOrchestrationState.Sending);
         EmitLog("🚀 Iniciando envío de mensajes...");
@@ -203,6 +212,84 @@ public sealed class WhatsAppSendOrchestrator
                 ? $"{result.Status}: {result.Message}"
                 : $"{result.Status}: {result.Message} {extraReason}";
             isCancellationRequested = true;
+        }
+
+        List<WhatsAppLine> GetHealthyRunLines()
+        {
+            return runLines
+                .Where(line => !unhealthyLineIds.Contains(line.Id))
+                .ToList();
+        }
+
+        WhatsAppLine? GetRoundRobinLineForMessage(int messageIndex)
+        {
+            List<WhatsAppLine> healthyRunLines = GetHealthyRunLines();
+            if (healthyRunLines.Count == 0)
+            {
+                return null;
+            }
+
+            int targetIndex = messageIndex % healthyRunLines.Count;
+            return healthyRunLines[targetIndex];
+        }
+
+        bool TryEnsureRoundRobinSender(int messageIndex, string fullPhone)
+        {
+            while (true)
+            {
+                WhatsAppLine? targetLine = GetRoundRobinLineForMessage(messageIndex);
+                if (targetLine == null)
+                {
+                    StopByGlobalFailure(
+                        WhatsAppSendResult.Failure(
+                            WhatsAppHealthStatus.BrowserUnavailable,
+                            "No hay líneas saludables seleccionadas disponibles.",
+                            true),
+                        $"No hay más líneas saludables seleccionadas disponibles. Contacto pendiente: {fullPhone}.");
+                    return false;
+                }
+
+                EmitLog($"Usando línea {targetLine.DisplayName} para mensaje {messageIndex + 1}");
+
+                string? currentLineIdBeforeOpen = currentLine?.Id ?? pendingLineChangeSourceId;
+                bool switchingLines = !string.IsNullOrWhiteSpace(currentLineIdBeforeOpen)
+                    && !string.Equals(currentLineIdBeforeOpen, targetLine.Id, StringComparison.OrdinalIgnoreCase);
+
+                if (sender != null
+                    && currentLine != null
+                    && string.Equals(currentLine.Id, targetLine.Id, StringComparison.OrdinalIgnoreCase))
+                {
+                    pendingLineChangeSourceId = null;
+                    return true;
+                }
+
+                var candidateSender = OpenSenderForLine(
+                    targetLine,
+                    showQrInstruction: false,
+                    updateSelection: true,
+                    showOpenError: false,
+                    reuseCurrent: true);
+
+                if (candidateSender != null)
+                {
+                    sender = candidateSender;
+                    if (switchingLines)
+                    {
+                        lineChanges++;
+                    }
+
+                    pendingLineChangeSourceId = null;
+                    return true;
+                }
+
+                if (switchingLines)
+                {
+                    pendingLineChangeSourceId = currentLineIdBeforeOpen;
+                }
+
+                unhealthyLineIds.Add(targetLine.Id);
+                EmitLog($"⚠️ Línea {targetLine.DisplayName} excluida del round-robin tras fallar su apertura.");
+            }
         }
 
         async Task<WhatsAppSendResult> SendWithCurrentLineAsync(string fullPhone, string message, bool toAudio)
@@ -364,6 +451,39 @@ public sealed class WhatsAppSendOrchestrator
             return true;
         }
 
+        bool TryHandleRoundRobinGlobalFailure(WhatsAppSendResult result, string fullPhone, int messageIndex)
+        {
+            var failedLine = currentLine;
+            string failedLineName = failedLine?.DisplayName ?? "Sin línea activa";
+            lastLineName = failedLineName;
+
+            if (failedLine != null)
+            {
+                unhealthyLineIds.Add(failedLine.Id);
+                pendingLineChangeSourceId = failedLine.Id;
+            }
+
+            EmitLog($"⛔ Fallo global en línea {failedLineName}: {result.Status} - {result.Message}");
+            if (result.Status == WhatsAppHealthStatus.LoginRequired)
+            {
+                EmitLog("La línea requiere escaneo manual. El envío automático no esperará autenticación QR.");
+            }
+
+            CloseCurrentSender();
+
+            WhatsAppLine? retryLine = GetRoundRobinLineForMessage(messageIndex);
+            if (retryLine == null)
+            {
+                StopByGlobalFailure(
+                    result,
+                    $"No hay más líneas saludables seleccionadas disponibles. Contacto pendiente: {fullPhone}.");
+                return false;
+            }
+
+            EmitLog($"🔁 Reintentando {fullPhone} con línea {retryLine.DisplayName}.");
+            return true;
+        }
+
         WhatsAppSendRunSummary BuildSummary(bool cancelled)
         {
             string finalLineName = currentLine?.DisplayName ?? lastLineName;
@@ -408,13 +528,16 @@ public sealed class WhatsAppSendOrchestrator
             }
         }
 
-        sender = GetOrCreateWhatsSender(options.SelectedLine);
-
-        if (sender == null)
+        if (!useRoundRobin)
         {
-            isRunning = false;
-            EmitState(WhatsAppSendOrchestrationState.Cancelled);
-            return BuildSummary(cancelled: true);
+            sender = GetOrCreateWhatsSender(options.SelectedLine);
+
+            if (sender == null)
+            {
+                isRunning = false;
+                EmitState(WhatsAppSendOrchestrationState.Cancelled);
+                return BuildSummary(cancelled: true);
+            }
         }
 
         try
@@ -453,12 +576,20 @@ public sealed class WhatsAppSendOrchestrator
 
                 while (!messageFinished)
                 {
+                    if (useRoundRobin && !TryEnsureRoundRobinSender(messageIndex, fullPhone))
+                    {
+                        break;
+                    }
+
                     var healthResult = CheckCurrentLineHealth();
                     if (!healthResult.Success)
                     {
                         if (healthResult.IsGlobalFailure)
                         {
-                            if (!TryHandleGlobalFailure(healthResult, fullPhone))
+                            bool recovered = useRoundRobin
+                                ? TryHandleRoundRobinGlobalFailure(healthResult, fullPhone, messageIndex)
+                                : TryHandleGlobalFailure(healthResult, fullPhone);
+                            if (!recovered)
                             {
                                 break;
                             }
@@ -469,7 +600,7 @@ public sealed class WhatsAppSendOrchestrator
                         failed++;
                         MarkProcessed();
                         EmitLog($"❌ No se pudo enviar a {fullPhone}: {healthResult.Message}");
-                        EmitMessageResult(fullPhone, false, messageItem.ToAudio, healthResult, currentLine?.DisplayName ?? lastLineName);
+                        EmitMessageResult(messageItem, false, healthResult, currentLine?.DisplayName ?? lastLineName);
                         messageFinished = true;
                         continue;
                     }
@@ -485,12 +616,15 @@ public sealed class WhatsAppSendOrchestrator
                         EmitLog(messageItem.ToAudio
                             ? $"✅ Mensaje de audio enviado a {fullPhone} con línea {currentLine?.DisplayName}"
                             : $"✅ Mensaje de texto enviado a {fullPhone} con línea {currentLine?.DisplayName}");
-                        EmitMessageResult(fullPhone, true, messageItem.ToAudio, sendResult, currentLine?.DisplayName ?? lastLineName);
+                        EmitMessageResult(messageItem, true, sendResult, currentLine?.DisplayName ?? lastLineName);
                         messageFinished = true;
                     }
                     else if (sendResult.IsGlobalFailure)
                     {
-                        if (!TryHandleGlobalFailure(sendResult, fullPhone))
+                        bool recovered = useRoundRobin
+                            ? TryHandleRoundRobinGlobalFailure(sendResult, fullPhone, messageIndex)
+                            : TryHandleGlobalFailure(sendResult, fullPhone);
+                        if (!recovered)
                         {
                             break;
                         }
@@ -509,7 +643,7 @@ public sealed class WhatsAppSendOrchestrator
 
                         MarkProcessed();
                         EmitLog($"❌ No se pudo enviar a {fullPhone} con línea {currentLine?.DisplayName}: {sendResult.Message}");
-                        EmitMessageResult(fullPhone, false, messageItem.ToAudio, sendResult, currentLine?.DisplayName ?? lastLineName);
+                        EmitMessageResult(messageItem, false, sendResult, currentLine?.DisplayName ?? lastLineName);
                         messageFinished = true;
                     }
                 }
@@ -783,18 +917,15 @@ public sealed class WhatsAppSendOrchestrator
     }
 
     private void EmitMessageResult(
-        string fullPhone,
+        OutboundMessage messageItem,
         bool success,
-        bool toAudio,
         WhatsAppSendResult result,
         string lineName)
     {
-        MessageResult?.Invoke(new WhatsAppMessageResult(
-            fullPhone,
+        MessageResult?.Invoke(WhatsAppMessageResult.Create(
+            messageItem,
             success,
-            toAudio,
-            result.Status,
-            result.Message,
+            result,
             lineName));
     }
 }

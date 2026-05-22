@@ -44,7 +44,7 @@ public sealed class AutoWhatsAppSettingsStoreTests
 
         var settings = AutoWhatsAppSettingsStore.LoadOrDefault(configPath);
 
-        Assert.Equal(0, settings.DelayBetweenMessagesMinutes);
+        Assert.Equal(1, settings.DelayBetweenMessagesMinutes);
         Assert.False(AutoWhatsAppSettingsStore.TryLoad(out _, configPath));
     }
 
@@ -62,7 +62,7 @@ public sealed class AutoWhatsAppSettingsStoreTests
 
             var settings = AutoWhatsAppSettingsStore.LoadOrDefault(configPath);
 
-            Assert.Equal(0, settings.DelayBetweenMessagesMinutes);
+            Assert.Equal(1, settings.DelayBetweenMessagesMinutes);
             Assert.False(AutoWhatsAppSettingsStore.TryLoad(out _, configPath));
         }
         finally
@@ -72,7 +72,8 @@ public sealed class AutoWhatsAppSettingsStoreTests
     }
 
     [Theory]
-    [InlineData(-1, 0)]
+    [InlineData(-1, 1)]
+    [InlineData(0, 1)]
     [InlineData(999, 120)]
     public void LoadOrDefault_WhenDelayIsOutOfRange_NormalizesValue(int storedDelay, int expectedDelay)
     {
