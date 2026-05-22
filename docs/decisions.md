@@ -53,6 +53,22 @@ Consecuencia operativa:
 - Si el usuario cancela la preparacion, esa linea queda como `NotAvailable`.
 - Durante el envio, una linea que vuelva a pedir QR se descarta para esa corrida; no se espera escaneo.
 
+## Modo manual asistido antes que automatizacion ciega
+
+El flujo recomendado del repo prioriza un modo manual asistido por encima de la automatizacion desatendida.
+
+Motivos:
+
+- La revision humana reduce errores de destinatario, consentimiento y contenido.
+- WhatsApp Web con Selenium es fragil y puede cambiar sin aviso.
+- Para usuarios que no necesitan una plataforma oficial, el modo manual asistido es la opcion gratuita de menor riesgo operativo.
+
+Consecuencia operativa:
+
+- La corrida debe prepararse con autenticacion manual, revision del Excel y `dry-run`.
+- El envio real no debe iniciarse como un proceso ciego sin aprobacion explicita del operador.
+- El repositorio no documenta ni acepta tacticas de evasion, bypasses ni optimizaciones orientadas a eludir controles del canal.
+
 ## Fallback automatico desactivado por defecto
 
 El checkbox de fallback se deja desactivado inicialmente.
@@ -62,6 +78,72 @@ Motivos:
 - Cambiar de remitente puede tener impacto operativo y de negocio.
 - La opcion manual conserva el comportamiento predecible para usuarios que solo tienen una linea.
 - Cuando se active, el log deja auditado que linea fallo, que linea tomo el envio y con que linea se envio cada contacto.
+
+## Consentimiento explicito requerido en Excel
+
+La carga del Excel exige consentimiento explicito por fila antes de habilitar el envio.
+
+Motivos:
+
+- El archivo debe dejar trazabilidad minima de si el destinatario autorizo el contacto.
+- La app necesita distinguir entre filas invalidas y filas correctas pero no enviables por falta de opt-in.
+- Mantener la compatibilidad de lectura con plantillas antiguas evita perder visibilidad, pero no debe permitir envios sin consentimiento.
+
+Consecuencia operativa:
+
+- La plantilla agrega `optIn`, `optInSource` y `optInAt`.
+- Solo se envian filas con telefono, mensaje y `optIn` explicito (`true` o `1`).
+- `optInSource` es obligatorio cuando existe consentimiento explicito; `optInAt` queda como fecha opcional.
+- Si faltan columnas de consentimiento, la vista previa lo advierte y esas filas quedan como no enviables.
+
+## Dry-run obligatorio antes del envio real
+
+Toda corrida real requiere un `dry-run` previo y aprobado por el operador.
+
+Motivos:
+
+- Permite revisar exclusiones por `no-contactar`, falta de `optIn` y filas invalidas antes de enviar.
+- Hace visible el alcance real de la corrida y sus riesgos operativos.
+- Refuerza el control humano antes de usar una automatizacion fragil sobre WhatsApp Web.
+
+Consecuencia operativa:
+
+- El `dry-run` no envia mensajes.
+- El envio real queda bloqueado hasta que exista un `dry-run` exitoso y confirmado explicitamente.
+- Solo las filas enviables del `dry-run` aprobado entran a la corrida real.
+
+## Selenium sobre WhatsApp Web frente a alternativas oficiales
+
+El proyecto mantiene Selenium sobre WhatsApp Web como una ayuda operativa local, no como sustituto de canales oficiales.
+
+Motivos:
+
+- Selenium sobre una interfaz web es fragil por definicion y depende de cambios externos.
+- No ofrece las garantias de estabilidad, auditoria o soporte de una integracion oficial.
+- Algunos escenarios de negocio exigen trazabilidad y contratos de servicio que este repo no puede prometer.
+
+Consecuencia operativa:
+
+- Para necesidades gratuitas o puntuales, la opcion de menor riesgo operativo es el modo manual asistido.
+- Para flujos criticos, volumen sostenido o requisitos formales de cumplimiento, conviene evaluar alternativas oficiales como WhatsApp Business Platform o integraciones aprobadas por Meta.
+
+## Lista local de no contactar en AppData
+
+La exclusion persistente de contactos se guarda en `%AppData%/AutoWhatsApp/do-not-contact.json`.
+
+Motivos:
+
+- La lista de no-contactar contiene datos personales y no debe vivir junto al ejecutable ni en el repositorio.
+- Guardarla en AppData mantiene el alcance por usuario y evita que una publicacion o copia del binario arrastre contactos reales.
+- La comparacion debe ser estable aunque el Excel o el JSON usen espacios, `+` o puntuacion en los numeros.
+
+Consecuencia operativa:
+
+- La app carga la lista local al analizar el Excel y bloquea cualquier fila cuyo telefono normalizado coincida exactamente.
+- La normalizacion concatena codigo de pais y telefono conservando solo digitos antes de comparar.
+- Las filas bloqueadas por no-contactar quedan como no enviables y aparecen separadas en el resumen de la vista previa.
+- Si el archivo local existe pero no se puede leer como JSON valido, la validacion del Excel se detiene hasta corregirlo.
+- No se versiona ningun archivo real de contactos; el JSON local se mantiene fuera del repo.
 
 ## Sin reintentos infinitos
 

@@ -53,6 +53,9 @@ namespace Automate_Whatsapp
             colPhone = new DataGridViewTextBoxColumn();
             colMessage = new DataGridViewTextBoxColumn();
             colToAudio = new DataGridViewCheckBoxColumn();
+            colOptIn = new DataGridViewTextBoxColumn();
+            colOptInSource = new DataGridViewTextBoxColumn();
+            colOptInAt = new DataGridViewTextBoxColumn();
             colValidationStatus = new DataGridViewTextBoxColumn();
             lblPreviewStatus = new Label();
             grpSchedule = new GroupBox();
@@ -363,7 +366,7 @@ namespace Automate_Whatsapp
             lblPreviewSummary.Name = "lblPreviewSummary";
             lblPreviewSummary.Size = new Size(858, 28);
             lblPreviewSummary.TabIndex = 0;
-            lblPreviewSummary.Text = "Total filas: 0 | Válidas: 0 | Inválidas: 0 | Audios: 0";
+            lblPreviewSummary.Text = "Total filas: 0 | Enviables: 0 | Bloqueados DNC: 0 | Sin opt-in: 0 | Inválidas: 0 | Audios: 0";
             lblPreviewSummary.TextAlign = ContentAlignment.MiddleLeft;
             //
             // dgvExcelPreview
@@ -375,7 +378,7 @@ namespace Automate_Whatsapp
             dgvExcelPreview.BackgroundColor = SystemColors.Window;
             dgvExcelPreview.BorderStyle = BorderStyle.Fixed3D;
             dgvExcelPreview.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvExcelPreview.Columns.AddRange(new DataGridViewColumn[] { colCountryCode, colPhone, colMessage, colToAudio, colValidationStatus });
+            dgvExcelPreview.Columns.AddRange(new DataGridViewColumn[] { colCountryCode, colPhone, colMessage, colToAudio, colOptIn, colOptInSource, colOptInAt, colValidationStatus });
             dgvExcelPreview.Dock = DockStyle.Fill;
             dgvExcelPreview.Location = new Point(3, 31);
             dgvExcelPreview.MultiSelect = false;
@@ -424,6 +427,33 @@ namespace Automate_Whatsapp
             colToAudio.ReadOnly = true;
             colToAudio.Width = 80;
             //
+            // colOptIn
+            //
+            colOptIn.DataPropertyName = "OptInDisplay";
+            colOptIn.HeaderText = "optIn";
+            colOptIn.MinimumWidth = 70;
+            colOptIn.Name = "colOptIn";
+            colOptIn.ReadOnly = true;
+            colOptIn.Width = 80;
+            //
+            // colOptInSource
+            //
+            colOptInSource.DataPropertyName = "OptInSource";
+            colOptInSource.HeaderText = "optInSource";
+            colOptInSource.MinimumWidth = 120;
+            colOptInSource.Name = "colOptInSource";
+            colOptInSource.ReadOnly = true;
+            colOptInSource.Width = 140;
+            //
+            // colOptInAt
+            //
+            colOptInAt.DataPropertyName = "OptInAtDisplay";
+            colOptInAt.HeaderText = "optInAt";
+            colOptInAt.MinimumWidth = 90;
+            colOptInAt.Name = "colOptInAt";
+            colOptInAt.ReadOnly = true;
+            colOptInAt.Width = 110;
+            //
             // colValidationStatus
             //
             colValidationStatus.DataPropertyName = "ValidationStatus";
@@ -431,7 +461,7 @@ namespace Automate_Whatsapp
             colValidationStatus.MinimumWidth = 150;
             colValidationStatus.Name = "colValidationStatus";
             colValidationStatus.ReadOnly = true;
-            colValidationStatus.Width = 180;
+            colValidationStatus.Width = 220;
             //
             // lblPreviewStatus
             //
@@ -838,6 +868,9 @@ namespace Automate_Whatsapp
         private System.Windows.Forms.DataGridViewTextBoxColumn colPhone;
         private System.Windows.Forms.DataGridViewTextBoxColumn colMessage;
         private System.Windows.Forms.DataGridViewCheckBoxColumn colToAudio;
+        private System.Windows.Forms.DataGridViewTextBoxColumn colOptIn;
+        private System.Windows.Forms.DataGridViewTextBoxColumn colOptInSource;
+        private System.Windows.Forms.DataGridViewTextBoxColumn colOptInAt;
         private System.Windows.Forms.DataGridViewTextBoxColumn colValidationStatus;
         private System.Windows.Forms.Label lblPreviewStatus;
         private System.Windows.Forms.GroupBox grpSchedule;

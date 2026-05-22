@@ -22,6 +22,10 @@ namespace Automate_Whatsapp
 
         private string excelPath = "";
         private List<ExcelMessagePreviewRow> excelPreviewRows = new();
+        private string excelConsentWarning = "";
+        private Button btnDryRun = null!;
+        private string approvedDryRunToken = "";
+        private DateTime? approvedDryRunAt;
 
         private System.Windows.Forms.Timer schedulerTimer = null!;
         private DateTime scheduledTime;
@@ -35,6 +39,8 @@ namespace Automate_Whatsapp
 
         private const string StatusNoFile = "Sin archivo";
         private const string StatusReady = "Listo";
+        private const string StatusDryRunRequired = "Dry-run requerido";
+        private const string StatusReviewRequired = "Revisar Excel";
         private const string StatusScheduled = "Programado";
         private const string StatusSending = "Enviando";
         private const string StatusPaused = "Pausado";
@@ -66,6 +72,7 @@ namespace Automate_Whatsapp
             ApplyExcelPreviewVisibility();
             AdjustResponsiveLayout();
             InitializeScheduleControls();
+            InitializeDryRunControls();
             SetSendFeedback(StatusNoFile, 0, 0, 0, 0, 0);
             UpdateActionButtons();
             LoadWhatsAppLines();
@@ -99,6 +106,41 @@ namespace Automate_Whatsapp
         private void InitializeConfigurationStateFromUi()
         {
             autoFallbackEnabled = false;
+        }
+
+        private void InitializeDryRunControls()
+        {
+            btnDryRun = new Button
+            {
+                Name = "btnDryRun",
+                Text = "Ejecutar dry-run",
+                AutoSize = false,
+                Size = new Size(142, 34),
+                Enabled = false,
+                UseVisualStyleBackColor = true,
+                Anchor = AnchorStyles.Left
+            };
+            btnDryRun.Click += btnDryRun_Click;
+
+            fileLayout.SuspendLayout();
+            try
+            {
+                if (fileLayout.ColumnCount < 5)
+                {
+                    fileLayout.ColumnCount = 5;
+                    fileLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 148F));
+                    fileLayout.Controls.Add(btnDryRun, 4, 0);
+                    fileLayout.SetColumnSpan(lblExcelCompactSummary, 5);
+                }
+            }
+            finally
+            {
+                fileLayout.ResumeLayout(true);
+            }
+
+            uiToolTip.SetToolTip(
+                btnDryRun,
+                "Genera un reporte local sin enviar mensajes y habilita el envío real solo después de confirmarlo.");
         }
 
         private void chkShowExcelPreview_CheckedChanged(object sender, EventArgs e)
@@ -266,6 +308,7 @@ namespace Automate_Whatsapp
         {
             autoFallbackEnabled = enabled;
             UpdateConfigurationSummary();
+            UpdateActionButtons();
             UpdateMenuState();
         }
 
@@ -299,6 +342,7 @@ namespace Automate_Whatsapp
         private void UpdateSelectedLineStatus()
         {
             UpdateConfigurationSummary();
+            UpdateActionButtons();
         }
 
         private void ReconcileSelectedLinesForRun(bool includePrimary)
@@ -322,6 +366,7 @@ namespace Automate_Whatsapp
         private void UpdateRunLinesSummary()
         {
             UpdateConfigurationSummary();
+            UpdateActionButtons();
         }
 
         private void LoadElevenLabsSettingsIntoUi()
@@ -580,6 +625,7 @@ namespace Automate_Whatsapp
             ReconcileSelectedLinesForRun(includePrimary: true);
             UpdateSelectedLineStatus();
             UpdateRunLinesSummary();
+            UpdateActionButtons();
             UpdateMenuState();
         }
 
@@ -1002,6 +1048,7 @@ namespace Automate_Whatsapp
 
         private async Task SetSelectedExcelFileAsync(string selectedPath)
         {
+            ResetDryRunApproval();
             excelPath = selectedPath;
             lblFilePath.Text = $"Archivo: {Path.GetFileName(excelPath)}";
             uiToolTip.SetToolTip(lblFilePath, excelPath);
@@ -1012,8 +1059,9 @@ namespace Automate_Whatsapp
         {
             isLoadingExcelPreview = true;
             excelPreviewRows = new List<ExcelMessagePreviewRow>();
+            excelConsentWarning = "";
             ClearExcelPreviewGrid();
-            lblPreviewSummary.Text = "Total filas: 0 | Válidas: 0 | Inválidas: 0 | Audios: 0";
+            lblPreviewSummary.Text = "Total filas: 0 | Enviables: 0 | Bloqueados DNC: 0 | Sin opt-in: 0 | Inválidas: 0 | Audios: 0";
             lblPreviewStatus.Text = "Analizando archivo Excel...";
             lblPreviewStatus.ForeColor = Color.FromArgb(75, 85, 99);
             lblExcelCompactSummary.Text = $"{Path.GetFileName(selectedPath)} - analizando Excel...";
@@ -1023,16 +1071,23 @@ namespace Automate_Whatsapp
 
             try
             {
-                var loadedRows = await Task.Run(() => ExcelReader.ReadPreview(selectedPath));
+                var doNotContactEntries = await Task.Run(LoadDoNotContactEntriesForValidation);
+                var previewResult = await Task.Run(() => ExcelReader.ReadPreviewResult(selectedPath, doNotContactEntries));
                 if (loadVersion != excelPreviewLoadVersion)
                 {
                     return;
                 }
 
-                excelPreviewRows = loadedRows;
+                excelPreviewRows = previewResult.Rows;
+                excelConsentWarning = previewResult.ConsentWarning;
                 BindExcelPreview();
                 Log("Archivo Excel seleccionado correctamente.");
                 Log($"Excel analizado: {excelPreviewRows.Count} filas.");
+                Log($"Lista local de no contactar cargada: {doNotContactEntries.Count} registro(s).");
+                if (!string.IsNullOrWhiteSpace(excelConsentWarning))
+                {
+                    Log(excelConsentWarning);
+                }
             }
             catch (Exception ex)
             {
@@ -1057,10 +1112,18 @@ namespace Automate_Whatsapp
         {
             try
             {
-                excelPreviewRows = ExcelReader.ReadPreview(excelPath);
+                var doNotContactEntries = LoadDoNotContactEntriesForValidation();
+                var previewResult = ExcelReader.ReadPreviewResult(excelPath, doNotContactEntries);
+                excelPreviewRows = previewResult.Rows;
+                excelConsentWarning = previewResult.ConsentWarning;
                 BindExcelPreview();
                 Log("Archivo Excel seleccionado correctamente.");
                 Log($"Excel analizado: {excelPreviewRows.Count} filas.");
+                Log($"Lista local de no contactar cargada: {doNotContactEntries.Count} registro(s).");
+                if (!string.IsNullOrWhiteSpace(excelConsentWarning))
+                {
+                    Log(excelConsentWarning);
+                }
             }
             catch (Exception ex)
             {
@@ -1068,10 +1131,29 @@ namespace Automate_Whatsapp
             }
         }
 
+        private static IReadOnlyList<DoNotContactEntry> LoadDoNotContactEntriesForValidation()
+        {
+            string configPath = DoNotContactStore.GetConfigPath();
+            if (DoNotContactStore.TryLoad(out var entries, configPath))
+            {
+                return entries;
+            }
+
+            if (File.Exists(configPath))
+            {
+                throw new InvalidOperationException(
+                    $"No se pudo cargar la lista local de no contactar en {configPath}. Corrige el archivo JSON antes de enviar.");
+            }
+
+            return Array.Empty<DoNotContactEntry>();
+        }
+
         private void ClearSelectedExcelAfterReadError(Exception ex)
         {
+            ResetDryRunApproval();
             excelPath = "";
             excelPreviewRows = new List<ExcelMessagePreviewRow>();
+            excelConsentWarning = "";
             lblFilePath.Text = "Archivo seleccionado: ninguno";
             uiToolTip.SetToolTip(lblFilePath, lblFilePath.Text);
             BindExcelPreview();
@@ -1128,11 +1210,14 @@ namespace Automate_Whatsapp
         private void UpdateExcelPreviewSummary()
         {
             int totalRows = excelPreviewRows.Count;
-            int validRows = excelPreviewRows.Count(row => row.IsValid);
-            int invalidRows = totalRows - validRows;
-            int audioRows = excelPreviewRows.Count(row => row.IsValid && row.ToAudio);
+            int sendableRows = SendablePreviewRows;
+            int blockedRows = PreviewRowsBlockedByDoNotContact;
+            int withoutOptInRows = PreviewRowsWithoutOptIn;
+            int invalidRows = InvalidPreviewRows;
+            int unsendableRows = UnsendablePreviewRows;
+            int audioRows = AudioPreviewRows;
 
-            string totalsText = $"Total filas: {totalRows} | Válidas: {validRows} | Inválidas: {invalidRows} | Audios: {audioRows}";
+            string totalsText = $"Total filas: {totalRows} | Enviables: {sendableRows} | Bloqueados DNC: {blockedRows} | Sin opt-in: {withoutOptInRows} | Inválidas: {invalidRows} | Audios: {audioRows}";
             lblPreviewSummary.Text = totalsText;
 
             if (string.IsNullOrWhiteSpace(excelPath))
@@ -1145,17 +1230,23 @@ namespace Automate_Whatsapp
             else
             {
                 lblExcelCompactSummary.Text = $"{Path.GetFileName(excelPath)} - {totalsText}";
-                lblExcelCompactSummary.ForeColor = validRows == 0
+                lblExcelCompactSummary.ForeColor = sendableRows == 0
                     ? Color.FromArgb(185, 28, 28)
-                    : invalidRows > 0
+                    : unsendableRows > 0 || !string.IsNullOrWhiteSpace(excelConsentWarning)
                         ? Color.FromArgb(180, 83, 9)
                         : Color.FromArgb(21, 128, 61);
             }
 
             if (!isScheduled && !isSending)
             {
-                string status = validRows > 0 ? StatusReady : StatusNoFile;
-                SetSendFeedback(status, 0, validRows, 0, 0, invalidRows);
+                string status = string.IsNullOrWhiteSpace(excelPath)
+                    ? StatusNoFile
+                    : sendableRows > 0
+                        ? HasApprovedDryRun
+                            ? StatusReady
+                            : StatusDryRunRequired
+                        : StatusReviewRequired;
+                SetSendFeedback(status, 0, sendableRows, 0, 0, unsendableRows);
             }
 
             UpdateActionButtons();
@@ -1167,26 +1258,44 @@ namespace Automate_Whatsapp
 
             if (totalRows == 0)
             {
-                lblPreviewStatus.Text = "El Excel no tiene filas de datos para enviar.";
+                lblPreviewStatus.Text = AppendConsentWarning("El Excel no tiene filas de datos para enviar.");
                 lblPreviewStatus.ForeColor = Color.FromArgb(185, 28, 28);
                 return;
             }
 
-            if (validRows == 0)
+            if (sendableRows == 0)
             {
-                lblPreviewStatus.Text = "Todas las filas son inválidas. Corrige teléfono y mensaje antes de programar.";
+                lblPreviewStatus.Text = AppendConsentWarning(
+                    blockedRows > 0 && withoutOptInRows == 0 && invalidRows == 0
+                        ? "Todas las filas están bloqueadas por la lista no contactar. No se enviará ningún mensaje."
+                    : withoutOptInRows > 0 && blockedRows == 0 && invalidRows == 0
+                        ? "Todas las filas carecen de opt-in explícito. No se enviará ningún mensaje hasta registrar el consentimiento."
+                        : "No hay filas enviables. Revisa bloqueos por no contactar, consentimiento y datos del Excel.");
                 lblPreviewStatus.ForeColor = Color.FromArgb(185, 28, 28);
                 return;
             }
 
-            if (invalidRows > 0)
+            if (unsendableRows > 0 || !string.IsNullOrWhiteSpace(excelConsentWarning))
             {
-                lblPreviewStatus.Text = $"Hay {invalidRows} fila(s) inválida(s). No se enviarán; solo se programarán {validRows} fila(s) válida(s).";
+                lblPreviewStatus.Text = AppendConsentWarning(
+                    HasApprovedDryRun
+                        ? $"Dry-run aprobado. Hay {sendableRows} fila(s) enviable(s), {blockedRows} bloqueada(s) por no contactar, {withoutOptInRows} sin opt-in y {invalidRows} inválida(s). Solo se enviarán las enviables."
+                        : $"Hay {sendableRows} fila(s) enviable(s), {blockedRows} bloqueada(s) por no contactar, {withoutOptInRows} sin opt-in y {invalidRows} inválida(s). Ejecuta el dry-run para revisar riesgos y habilitar el envío real.");
                 lblPreviewStatus.ForeColor = Color.FromArgb(180, 83, 9);
                 return;
             }
 
-            lblPreviewStatus.Text = "Todas las filas tienen teléfono y mensaje. Puedes programar el envío.";
+            if (!HasApprovedDryRun)
+            {
+                lblPreviewStatus.Text = "Todas las filas revisadas son enviables. Ejecuta el dry-run para revisar riesgos operativos y habilitar el envío real.";
+                lblPreviewStatus.ForeColor = Color.FromArgb(37, 99, 235);
+                return;
+            }
+
+            string approvedAtText = approvedDryRunAt.HasValue
+                ? approvedDryRunAt.Value.ToString("HH:mm")
+                : "hace unos instantes";
+            lblPreviewStatus.Text = $"Dry-run aprobado a las {approvedAtText}. Puedes programar o enviar únicamente las filas enviables.";
             lblPreviewStatus.ForeColor = Color.FromArgb(21, 128, 61);
         }
 
@@ -1199,12 +1308,26 @@ namespace Automate_Whatsapp
                     continue;
                 }
 
-                if (!previewRow.IsValid)
+                if (previewRow.HasInvalidData)
                 {
                     gridRow.DefaultCellStyle.BackColor = Color.FromArgb(254, 242, 242);
                     gridRow.DefaultCellStyle.ForeColor = Color.FromArgb(127, 29, 29);
                     gridRow.DefaultCellStyle.SelectionBackColor = Color.FromArgb(252, 165, 165);
                     gridRow.DefaultCellStyle.SelectionForeColor = Color.FromArgb(69, 10, 10);
+                }
+                else if (previewRow.IsBlockedByDoNotContact)
+                {
+                    gridRow.DefaultCellStyle.BackColor = Color.FromArgb(243, 244, 246);
+                    gridRow.DefaultCellStyle.ForeColor = Color.FromArgb(55, 65, 81);
+                    gridRow.DefaultCellStyle.SelectionBackColor = Color.FromArgb(209, 213, 219);
+                    gridRow.DefaultCellStyle.SelectionForeColor = Color.FromArgb(31, 41, 55);
+                }
+                else if (previewRow.LacksExplicitOptIn)
+                {
+                    gridRow.DefaultCellStyle.BackColor = Color.FromArgb(255, 251, 235);
+                    gridRow.DefaultCellStyle.ForeColor = Color.FromArgb(146, 64, 14);
+                    gridRow.DefaultCellStyle.SelectionBackColor = Color.FromArgb(253, 230, 138);
+                    gridRow.DefaultCellStyle.SelectionForeColor = Color.FromArgb(120, 53, 15);
                 }
                 else
                 {
@@ -1216,17 +1339,110 @@ namespace Automate_Whatsapp
             }
         }
 
-        private List<OutboundMessage> GetValidPreviewMessages()
+        private List<OutboundMessage> GetSendablePreviewMessages()
         {
             return excelPreviewRows
-                .Where(row => row.IsValid)
-                .Select(row => new OutboundMessage(row.CountryCode, row.Phone, row.Message, row.ToAudio))
+                .Where(row => row.IsSendable)
+                .Select(row => new OutboundMessage(
+                    row.CountryCode,
+                    row.Phone,
+                    row.Message,
+                    row.ToAudio,
+                    true,
+                    row.OptInSource,
+                    row.OptInAt))
                 .ToList();
         }
 
-        private int ValidPreviewRows => excelPreviewRows.Count(row => row.IsValid);
+        private int ValidPreviewRows => SendablePreviewRows;
 
-        private int InvalidPreviewRows => excelPreviewRows.Count(row => !row.IsValid);
+        private int SendablePreviewRows => excelPreviewRows.Count(row => row.IsSendable);
+
+        private int PreviewRowsBlockedByDoNotContact => excelPreviewRows.Count(row => row.IsBlockedByDoNotContact);
+
+        private int PreviewRowsWithoutOptIn => excelPreviewRows.Count(row => row.LacksExplicitOptIn);
+
+        private int InvalidPreviewRows => excelPreviewRows.Count(row => row.HasInvalidData);
+
+        private int UnsendablePreviewRows => excelPreviewRows.Count - SendablePreviewRows;
+
+        private int AudioPreviewRows => excelPreviewRows.Count(row => row.IsSendable && row.ToAudio);
+
+        private bool HasApprovedDryRun =>
+            !string.IsNullOrWhiteSpace(approvedDryRunToken)
+            && string.Equals(approvedDryRunToken, BuildDryRunToken(), StringComparison.Ordinal);
+
+        private string AppendConsentWarning(string baseText)
+        {
+            return string.IsNullOrWhiteSpace(excelConsentWarning)
+                ? baseText
+                : $"{baseText} {excelConsentWarning}";
+        }
+
+        private string BuildDryRunToken()
+        {
+            string selectedRunIds = string.Join(
+                ",",
+                selectedLineIdsForRun
+                    .OrderBy(lineId => lineId, StringComparer.OrdinalIgnoreCase));
+
+            return string.Join(
+                "|",
+                excelPath.Trim(),
+                excelPreviewRows.Count,
+                SendablePreviewRows,
+                PreviewRowsBlockedByDoNotContact,
+                PreviewRowsWithoutOptIn,
+                InvalidPreviewRows,
+                AudioPreviewRows,
+                selectedWhatsAppLineId ?? "",
+                (int)(SelectedWhatsAppLine?.OperationalState ?? WhatsAppLineOperationalState.Unknown),
+                autoFallbackEnabled ? "1" : "0",
+                selectedRunIds,
+                GetSelectedLinesForRun().Count);
+        }
+
+        private void ResetDryRunApproval()
+        {
+            approvedDryRunToken = "";
+            approvedDryRunAt = null;
+        }
+
+        private static string BuildDryRunSummary(SendDryRunReport report)
+        {
+            var summaryLines = new List<string>
+            {
+                "Dry-run completado. Esto no enviará mensajes.",
+                "",
+                "Resumen:",
+                $"- Total filas: {report.TotalRowCount}",
+                $"- Enviables: {report.SendableRowCount}",
+                $"- Bloqueadas por no contactar: {report.BlockedByDoNotContactCount}",
+                $"- Sin opt-in: {report.RowsWithoutOptInCount}",
+                $"- Inválidas: {report.InvalidRowCount}",
+                $"- Audios: {report.AudioRowCount}",
+                $"- Línea principal: {report.SelectedLineName} ({report.SelectedLineStateText})",
+                $"- Líneas seleccionadas: {report.EnabledSelectedRunLineCount}",
+                $"- Cambio automático: {(report.AutoFallbackEnabled ? "Activado" : "Desactivado")}"
+            };
+
+            if (report.RiskMessages.Count == 0)
+            {
+                summaryLines.Add("");
+                summaryLines.Add("Sin riesgos bloqueantes detectados.");
+            }
+            else
+            {
+                summaryLines.Add("");
+                summaryLines.Add("Riesgos y exclusiones:");
+                foreach (string riskMessage in report.RiskMessages)
+                {
+                    summaryLines.Add($"- {riskMessage}");
+                }
+            }
+
+            return string.Join(Environment.NewLine, summaryLines);
+        }
 
         private void SetSendFeedback(string status, int processed, int total, int successes, int errors, int skipped)
         {
@@ -1241,6 +1457,8 @@ namespace Automate_Whatsapp
             lblGeneralStatus.ForeColor = status switch
             {
                 StatusReady => Color.FromArgb(21, 128, 61),
+                StatusDryRunRequired => Color.FromArgb(37, 99, 235),
+                StatusReviewRequired => Color.FromArgb(180, 83, 9),
                 StatusScheduled => Color.FromArgb(37, 99, 235),
                 StatusSending => Color.FromArgb(22, 101, 52),
                 StatusPaused => Color.FromArgb(180, 83, 9),
@@ -1269,15 +1487,24 @@ namespace Automate_Whatsapp
         private void UpdateActionButtons()
         {
             bool operationActive = (isScheduled || isSending) && !cancellationRequested;
+            bool hasApprovedDryRun = HasApprovedDryRun;
             bool canRequestSend = SendActionPolicy.CanRequestSend(
-                new SendActionButtonState(isSending, isScheduled, isPreparingLines));
+                new SendActionButtonState(isSending, isScheduled, isPreparingLines, hasApprovedDryRun));
+            bool canRunDryRun = !OperationBlockingSetup
+                && !isLoadingExcelPreview
+                && !string.IsNullOrWhiteSpace(excelPath);
 
             btnPauseResume.Enabled = operationActive;
             btnCancel.Enabled = operationActive;
-            // Los botones de envío quedan disponibles aunque falten precondiciones;
-            // las validaciones centralizadas explican el bloqueo con log y MessageBox.
             btnSend.Enabled = canRequestSend;
             btnSendNow.Enabled = canRequestSend;
+            btnDryRun.Enabled = canRunDryRun;
+            btnDryRun.Text = hasApprovedDryRun ? "Revisar dry-run" : "Ejecutar dry-run";
+            uiToolTip.SetToolTip(
+                btnDryRun,
+                hasApprovedDryRun
+                    ? "Vuelve a revisar el reporte local antes de enviar si quieres confirmar el estado actual."
+                    : "Genera un reporte local sin enviar mensajes y habilita el envío real solo después de confirmarlo.");
             btnChangeScheduleTime.Enabled = !OperationBlockingSetup;
             UpdateMenuState();
         }
@@ -1370,6 +1597,10 @@ namespace Automate_Whatsapp
             }
         }
 
+        private void btnDryRun_Click(object? sender, EventArgs e)
+        {
+            RunDryRunReview();
+        }
 
         private void btnSend_Click(object sender, EventArgs e)
         {
@@ -1390,6 +1621,60 @@ namespace Automate_Whatsapp
             await StartSendAsync(SendStartTrigger.ImmediateClick);
         }
 
+        private void RunDryRunReview()
+        {
+            bool hadExcelBeforeLoad = !string.IsNullOrEmpty(excelPath);
+            if (hadExcelBeforeLoad && !isLoadingExcelPreview && excelPreviewRows.Count == 0)
+            {
+                LoadExcelPreview();
+            }
+
+            var dryRunReport = SendActionPolicy.CreateDryRunReport(
+                CreateSendActionPolicyInput(
+                    SendActionKind.DryRun,
+                    "No se completó el dry-run"));
+
+            string reviewSummary = BuildDryRunSummary(dryRunReport);
+            Log("Dry-run ejecutado. No se enviaron mensajes.");
+            Log(reviewSummary.Replace(Environment.NewLine, " "));
+
+            if (!dryRunReport.CanApproveForSend)
+            {
+                ResetDryRunApproval();
+                UpdateExcelPreviewSummary();
+                UpdateActionButtons();
+                MessageBox.Show(
+                    reviewSummary + Environment.NewLine + Environment.NewLine
+                    + "Corrige los puntos marcados y vuelve a ejecutar el dry-run antes de enviar.",
+                    "Dry-run",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            var confirmationResult = MessageBox.Show(
+                reviewSummary + Environment.NewLine + Environment.NewLine
+                + $"¿Confirmas que revisaste este dry-run y quieres habilitar el envío real únicamente para {dryRunReport.SendableRowCount} fila(s) enviable(s)?",
+                "Confirmar dry-run",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Information);
+
+            if (confirmationResult != DialogResult.Yes)
+            {
+                ResetDryRunApproval();
+                UpdateExcelPreviewSummary();
+                UpdateActionButtons();
+                Log("Dry-run revisado sin aprobación explícita. El envío real permanece deshabilitado.");
+                return;
+            }
+
+            approvedDryRunToken = BuildDryRunToken();
+            approvedDryRunAt = DateTime.Now;
+            UpdateExcelPreviewSummary();
+            UpdateActionButtons();
+            Log($"Dry-run aprobado. Envío real habilitado para {dryRunReport.SendableRowCount} fila(s) enviable(s).");
+        }
+
         private bool TryStartSchedule()
         {
             scheduledTime = GetSelectedScheduleDateTime();
@@ -1405,13 +1690,13 @@ namespace Automate_Whatsapp
                 return false;
             }
 
-            int invalidRows = excelPreviewRows.Count(row => !row.IsValid);
+            int unsendableRows = UnsendablePreviewRows;
             isScheduled = true;
             isPaused = false;
             isSending = false;
             cancellationRequested = false;
             btnPauseResume.Text = "Pausar";
-            SetSendFeedback(StatusScheduled, 0, validMessages.Count, 0, 0, invalidRows);
+            SetSendFeedback(StatusScheduled, 0, validMessages.Count, 0, 0, unsendableRows);
             LogSelectedLinesForRun();
             LogReadyFallbackCandidates();
             UpdateActionButtons();
@@ -1462,7 +1747,7 @@ namespace Automate_Whatsapp
             isSending = true;
             cancellationRequested = false;
             btnPauseResume.Text = "Pausar";
-            SetSendFeedback(StatusSending, 0, mensajes.Count, 0, 0, InvalidPreviewRows);
+            SetSendFeedback(StatusSending, 0, mensajes.Count, 0, 0, UnsendablePreviewRows);
             LogSelectedLinesForRun();
             LogReadyFallbackCandidates();
             UpdateActionButtons();
@@ -1512,19 +1797,19 @@ namespace Automate_Whatsapp
             }
 
             ShowFallbackWarningIfNeeded(showFallbackWarning);
-            validMessages = GetValidPreviewMessages();
-            int invalidRows = excelPreviewRows.Count(row => !row.IsValid);
-            if (invalidRows > 0 && confirmInvalidRows)
+            validMessages = GetSendablePreviewMessages();
+            int unsendableRows = UnsendablePreviewRows;
+            if (unsendableRows > 0 && confirmInvalidRows && !HasApprovedDryRun)
             {
                 var result = MessageBox.Show(
-                    $"El Excel tiene {invalidRows} fila(s) inválida(s). No se enviarán.\n\n¿Quieres continuar únicamente con las {validMessages.Count} fila(s) válida(s)?",
-                    "Filas inválidas detectadas",
+                    $"El Excel tiene {unsendableRows} fila(s) no enviable(s): {PreviewRowsBlockedByDoNotContact} bloqueada(s) por no contactar, {PreviewRowsWithoutOptIn} sin opt-in y {InvalidPreviewRows} inválida(s). No se enviarán.\n\n¿Quieres continuar únicamente con las {validMessages.Count} fila(s) enviable(s)?",
+                    "Filas no enviables detectadas",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
 
                 if (result != DialogResult.Yes)
                 {
-                    Log($"{failureContext}: el usuario canceló al detectar {invalidRows} fila(s) inválida(s).");
+                    Log($"{failureContext}: el usuario canceló al detectar {unsendableRows} fila(s) no enviable(s).");
                     return false;
                 }
             }
@@ -1554,13 +1839,20 @@ namespace Automate_Whatsapp
                 Action = action,
                 FailureContext = failureContext,
                 HasExcel = !string.IsNullOrEmpty(excelPath),
+                TotalRowCount = excelPreviewRows.Count,
                 ValidRowCount = ValidPreviewRows,
+                BlockedByDoNotContactCount = PreviewRowsBlockedByDoNotContact,
+                InvalidRowCount = InvalidPreviewRows,
+                RowsWithoutOptInCount = PreviewRowsWithoutOptIn,
+                AudioRowCount = AudioPreviewRows,
                 AvailableLineCount = whatsAppLines.Count,
                 HasSelectedLine = selectedLine != null,
                 SelectedRunLineCount = selectedLineIdsForRun.Count,
                 EnabledSelectedRunLineCount = GetSelectedLinesForRun().Count,
                 SelectedLineState = selectedLine?.OperationalState ?? WhatsAppLineOperationalState.Unknown,
                 SelectedLineName = selectedLine?.DisplayName ?? "",
+                AutoFallbackEnabled = autoFallbackEnabled,
+                HasApprovedDryRun = HasApprovedDryRun,
                 IsSending = isSending,
                 IsScheduled = isScheduled,
                 IsPreparingLines = isPreparingLines,
@@ -1643,7 +1935,7 @@ namespace Automate_Whatsapp
                 new WhatsAppSendOptions(
                     selectedLine,
                     configurationState.AutoFallbackEnabled,
-                    InvalidPreviewRows,
+                    UnsendablePreviewRows,
                     SelectedLineIdsForRun: configurationState.SelectedLineIdsForRun.ToList(),
                     DelayBetweenMessagesMinutes: configurationState.DelayBetweenMessagesMinutes));
 
